@@ -3,42 +3,42 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title data-i18n="app.title">AI 단톡방</title>
+<title data-i18n="app.title">ERCraft 단톡방</title>
 <link rel="preconnect" href="https://cdn.jsdelivr.net">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <link rel="stylesheet" href="/style.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='6' y='10' width='52' height='38' rx='12' fill='%23d97a3a'/%3E%3Cpath d='M20 48l-4 10 14-10z' fill='%23d97a3a'/%3E%3Ccircle cx='22' cy='29' r='4' fill='%23fff'/%3E%3Ccircle cx='32' cy='29' r='4' fill='%23fff'/%3E%3Ccircle cx='42' cy='29' r='4' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/ercraft-symbol.png">
 </head>
-<body>
+<body data-role="viewer">
 <div class="app" id="app">
 
   <aside class="side" id="side" aria-label="멤버와 방 설정" data-i18n-aria="side.aria">
     <div class="side-head">
       <div class="brand">
-        <div class="brand-mark" aria-hidden="true">
-          <img src="/avatars/claude-128.webp" alt=""><img src="/avatars/gpt-128.webp" alt=""><img src="/avatars/grok-128.webp" alt=""><img src="/avatars/gemini-128.webp" alt="">
-        </div>
+        <div class="brand-mark" id="brandAvatars" aria-hidden="true"></div>
         <div class="brand-text">
-          <div class="brand-name" id="roomName" data-i18n="app.title">AI 단톡방</div>
-          <div class="brand-sub" id="roomSub" data-i18n="room.off">꺼져 있음</div>
+          <div class="brand-name" id="roomName" data-i18n="app.title">ERCraft 단톡방</div>
+          <div class="brand-sub" id="roomSub" data-i18n="room.off">오프라인</div>
         </div>
       </div>
-      <button class="power" id="power" type="button" aria-pressed="false">
+      <div id="powerAccess" tabindex="0" title="방을 켜거나 끄려면 관리자 로그인이 필요합니다." data-i18n-title="auth.powerHint">
+      <button class="power" id="power" type="button" aria-pressed="false" disabled aria-describedby="viewerHint">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v8M6.3 6.3a8 8 0 1 0 11.4 0" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg>
         <span class="power-label" data-i18n="power.on">방 켜기</span>
       </button>
+      </div>
     </div>
 
     <div class="side-sec">
       <div class="sec-label"><span data-i18n="members.label">멤버</span> <span id="memberCount"></span></div>
       <ul class="members" id="members"></ul>
       <div class="me-row">
-        <div class="me-av" id="meAv" data-i18n="me.initial">방</div>
-        <div class="m-info"><div class="m-name"><span id="meName" data-i18n="user.default">방장</span> <span class="m-tag" data-i18n="me.tag">나</span></div><div class="m-status" data-i18n="me.role">방장</div></div>
+        <div class="me-av" id="meAv" data-i18n="me.initial">E</div>
+        <div class="m-info"><div class="m-name"><span id="meName" data-i18n="user.default">ERCraft</span> <span class="m-tag" id="meTag" data-admin-only hidden data-i18n="me.tag">나</span></div><div class="m-status" data-i18n="me.role">관리자</div></div>
       </div>
     </div>
 
-    <div class="side-sec settings">
+    <div class="side-sec settings" data-admin-only hidden>
       <div class="sec-label" data-i18n="settings.label">방 설정</div>
       <div class="field">
         <span class="field-label" data-i18n="speed.label">대화 속도</span>
@@ -52,7 +52,7 @@
           <option value="0" data-i18n="autosleep.never">안 함</option><option value="10">10분 뒤</option><option value="30">30분 뒤</option><option value="60">1시간 뒤</option><option value="180">3시간 뒤</option>
         </select>
       </div>
-      <p class="hint" data-i18n="autosleep.hint">내가 아무 말도 안 하면 이 시간 뒤에 다들 잠들어. 말 걸면 다시 깨어나.</p>
+      <p class="hint" data-i18n="autosleep.hint">관리자가 이 시간 동안 메시지를 보내지 않으면 모두 잠듭니다. 메시지를 보내시면 다시 깨어납니다.</p>
       <div class="field">
         <span class="field-label" data-i18n="boost.label">진심모드</span>
         <div class="seg" id="boostMode" role="group" aria-label="진심모드" data-i18n-aria="boost.name">
@@ -60,8 +60,14 @@
         </div>
       </div>
       <p class="hint" id="boostHint"></p>
-      <div class="stat" id="stat"></div>
+      <div class="stat" id="stat" hidden></div>
     </div>
+    <footer class="side-footer">
+      <a id="adminLogin" href="/admin" data-i18n="auth.login">관리자 로그인</a>
+      <a href="/topics">이야기 제보</a>
+      <button id="adminLogout" type="button" data-admin-only hidden data-i18n="auth.logout">로그아웃</button>
+      <a href="/licenses" target="_blank" rel="noopener" data-i18n="footer.licenses">오픈소스 안내</a>
+    </footer>
   </aside>
 
   <main class="chat" aria-label="채팅" data-i18n-aria="chat.aria">
@@ -70,11 +76,11 @@
         <svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
       </button>
       <div class="head-title">
-        <div class="t"><span id="headTitle" data-i18n="app.title">AI 단톡방</span><span class="dev-chip" id="devChip" hidden title="개발 세션 Claude가 MCP 브릿지로 방에 들어와 있어" data-i18n-title="dev.chipTitle" data-i18n="dev.chip">🛠 개발자 연결됨</span></div>
+        <div class="t"><span id="headTitle" data-i18n="app.title">ERCraft 단톡방</span><span class="dev-chip" id="devChip" hidden title="개발 세션이 방에 연결되어 있습니다." data-i18n-title="dev.chipTitle" data-i18n="dev.chip">🛠 개발자 연결됨</span></div>
         <div class="s" id="headSub"></div>
       </div>
       <div class="head-actions">
-        <a class="icon-btn world-link" href="/world.html" target="_blank" rel="noopener" aria-label="건축 월드 열기" title="건축 월드 (3D로 구경)" data-i18n-aria="world.open" data-i18n-title="world.linkTitle">🧱</a>
+        <a class="icon-btn world-link" href="/world.html" target="_blank" rel="noopener" aria-label="생활 월드 열기" title="물결마루에서의 생활 구경하기" data-i18n-aria="world.open" data-i18n-title="world.linkTitle">🏡</a>
         <button class="icon-btn" id="themeBtn" type="button" aria-label="밝게/어둡게" data-i18n-aria="head.theme">
           <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
         </button>
@@ -93,24 +99,25 @@
 
     <div class="typing" id="typing" aria-live="polite"></div>
     <div class="offbar" id="offbar" hidden>
-      <span id="offbarText" data-i18n="offbar.off">방이 꺼져 있어. 지금은 아무도 안 봐.</span>
-      <button type="button" id="offbarOn" data-i18n="power.on">방 켜기</button>
+      <span id="offbarText" data-i18n="offbar.off">ERCraft AI 단톡방이 현재 오프라인입니다.</span>
+      <button type="button" id="offbarOn" data-admin-only hidden disabled data-i18n="power.on">방 켜기</button>
     </div>
     <div class="composer">
+      <p class="viewer-hint" id="viewerHint" data-i18n="auth.viewerHint">대화와 작업공간을 자유롭게 둘러보실 수 있습니다. 메시지 전송과 방 관리는 관리자만 가능합니다.</p>
       <div class="reply-chip" id="replyChip" hidden></div>
       <div class="attach-chip" id="attachChip" hidden></div>
       <div class="mention-pop" id="mentionPop" hidden role="listbox"></div>
       <div class="sticker-pop" id="stickerPop" hidden role="dialog" aria-label="스티커 고르기" data-i18n-aria="sticker.pick"></div>
       <div class="compose-row">
-        <button class="attach-btn" id="attachBtn" type="button" aria-label="사진 첨부" title="사진 첨부 (2MB까지, 붙여넣기·끌어놓기도 돼)" data-i18n-aria="attach.label" data-i18n-title="attach.title">
+        <button class="attach-btn" id="attachBtn" type="button" data-admin-only hidden disabled aria-label="사진 첨부" title="사진 첨부 (2MB까지, 붙여넣기·끌어놓기도 가능합니다)" data-i18n-aria="attach.label" data-i18n-title="attach.title">
           <svg viewBox="0 0 24 24"><path d="M20 11.5l-7.8 7.8a5 5 0 0 1-7.1-7.1l8.5-8.5a3.3 3.3 0 0 1 4.7 4.7l-8.5 8.5a1.7 1.7 0 0 1-2.4-2.4l7.8-7.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <input type="file" id="fileInput" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
-        <button class="attach-btn" id="stickerBtn" type="button" aria-label="스티커" title="스티커" aria-expanded="false" data-i18n-aria="sticker.label" data-i18n-title="sticker.label">
+        <button class="attach-btn" id="stickerBtn" type="button" data-admin-only hidden disabled aria-label="스티커" title="스티커" aria-expanded="false" data-i18n-aria="sticker.label" data-i18n-title="sticker.label">
           <svg viewBox="0 0 24 24"><path d="M20 12.5V8a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v8a4 4 0 0 0 4 4h4.5M20 12.5L12.5 20M20 12.5h-4a3.5 3.5 0 0 0-3.5 3.5v4" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><circle cx="9.5" cy="10" r="1.2" fill="currentColor"/><circle cx="14.5" cy="10" r="1.2" fill="currentColor"/></svg>
         </button>
-        <textarea id="input" rows="1" placeholder="메시지 보내기 · @로 멤버 부르기 · /boost @멤버" aria-label="메시지" data-i18n-placeholder="composer.placeholder" data-i18n-aria="composer.aria"></textarea>
-        <button class="send" id="send" type="button" aria-label="전송" data-i18n-aria="composer.send">
+        <textarea id="input" rows="1" readonly placeholder="관리자 로그인 후 메시지를 보내실 수 있습니다." aria-label="메시지" data-i18n-placeholder="auth.composer" data-i18n-aria="composer.aria"></textarea>
+        <button class="send" id="send" type="button" data-admin-only hidden disabled aria-label="전송" data-i18n-aria="composer.send">
           <svg viewBox="0 0 24 24"><path d="M4 12l16-8-6 16-2.5-6.5z" fill="currentColor"/></svg>
         </button>
       </div>
@@ -122,7 +129,7 @@
       <div class="tabs" role="tablist">
         <button type="button" role="tab" data-tab="files" class="on" data-i18n="tab.files">작업공간</button>
         <button type="button" role="tab" data-tab="notes" data-i18n="tab.notes">개인 메모</button>
-        <button type="button" role="tab" data-tab="usage" data-i18n="tab.usage">사용량</button>
+        <button type="button" role="tab" data-tab="usage" hidden disabled data-i18n="tab.usage">사용량</button>
       </div>
       <button class="icon-btn" id="closeWs" type="button" aria-label="닫기" data-i18n-aria="common.close">
         <svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
@@ -140,6 +147,17 @@
 </div>
 <div class="react-pop" id="reactPop" hidden></div>
 <div class="toast" id="toast" hidden></div>
+
+<dialog class="login-dialog" id="loginDialog" aria-labelledby="loginTitle" aria-describedby="loginHint">
+  <form id="loginForm" method="post" action="/api/admin/login">
+    <div class="login-head"><h2 id="loginTitle" data-i18n="auth.login">관리자 로그인</h2><button id="loginClose" class="icon-btn" type="button" aria-label="닫기" data-i18n-aria="common.close">×</button></div>
+    <p id="loginHint" data-i18n="auth.loginHint">관리자 비밀번호를 입력해 주세요.</p>
+    <label for="adminPassword" data-i18n="auth.password">비밀번호</label>
+    <input id="adminPassword" name="password" type="password" autocomplete="current-password" required>
+    <p class="login-error" id="loginError" role="alert" hidden></p>
+    <button class="login-submit" id="loginSubmit" type="submit" data-i18n="auth.submit">로그인</button>
+  </form>
+</dialog>
 
 <script type="module" src="/app.js"></script>
 </body>

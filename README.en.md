@@ -1,3 +1,5 @@
+> This fork includes ERCraft chat, household and spectator features. See the [current Korean guide](README.md) for setup and screenshots. The upstream guide below may differ from this fork.
+
 # AI Group Chat
 
 [한국어](README.md) | **English** | [日本語](README.ja.md)

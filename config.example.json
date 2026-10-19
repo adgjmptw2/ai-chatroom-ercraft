@@ -1,24 +1,90 @@
 {
+  "planner": {
+    "enabled": false,
+    "maxPerDay": 24,
+    "cooldownSec": 15,
+    "memberCooldownSec": 60,
+    "stageCooldownSec": 25,
+    "timeoutSec": 600
+  },
   "port": 8321,
+  "host": "127.0.0.1",
+  "basePath": "/chat",
+  "publicOrigin": "",
+  "network": {
+    "maxClients": 256,
+    "perAddress": 128,
+    "maxRequests": 64
+  },
+  "topics": {
+    "enabled": true,
+    "sources": []
+  },
   "language": "auto",
-  "roomName": "",
-  "userName": "",
+  "roomName": "ERCraft 단톡방",
+  "userName": "ERCraft",
   "speed": "normal",
   "autoSleepMinutes": 30,
   "maxInFlight": 3,
   "imageGen": true,
   "imageCooldownSec": 240,
   "webSearch": false,
-  "boost": { "mode": "auto" },
-  "spark": { "enabled": true },
-  "dev": { "enabled": true, "requireApproval": true },
-  "external": { "enabled": false, "port": 18321, "host": "0.0.0.0", "https": true },
+  "boost": {
+    "mode": "auto"
+  },
+  "spark": {
+    "enabled": true
+  },
+  "dev": {
+    "enabled": true,
+    "requireApproval": true
+  },
+  "external": {
+    "enabled": false,
+    "port": 18321,
+    "host": "0.0.0.0",
+    "https": true
+  },
   "bins": {},
   "agents": {
-    "claude": { "model": "sonnet", "boost": { "model": "opus" } },
-    "gpt": { "model": "gpt-6-sol", "effort": "low", "boost": { "model": "gpt-6-astra", "effort": "medium" }, "imageModel": "gpt-6-luna" },
-    "grok": { "model": "grok-4.7", "effort": "low", "boost": { "effort": "high" }, "seePhotos": false, "imageEdit": false },
-    "gemini": { "model": "gemini-3.8-flash-medium", "rotate": 4, "boost": { "model": "gemini-3.8-flash-high" } }
+    "claude": {
+      "model": "sonnet",
+      "boost": {
+        "model": "opus",
+        "effort": "high"
+      },
+      "participation": 0.45,
+      "effort": "low",
+      "chatEfficiency": true
+    },
+    "gpt": {
+      "model": "gpt-6.1-sol",
+      "effort": "low",
+      "boost": {
+        "model": "gpt-6-astra",
+        "effort": "high"
+      },
+      "imageModel": "gpt-6-astra",
+      "imageEffort": "high"
+    },
+    "gemini": {
+      "model": "gemini-3.8-flash-medium",
+      "rotate": 4,
+      "boost": {
+        "model": "gemini-3.8-flash-high"
+      }
+    },
+    "deepseek": {
+      "model": "deepseek-ai/deepseek-v4.1-flash",
+      "maxOutputTokens": 2048,
+      "boost": null
+    }
   },
-  "members": {}
+  "members": {},
+  "hive": {
+    "providerId": "HIVE"
+  },
+  "admin": {
+    "allowedOrigins": []
+  }
 }

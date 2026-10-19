@@ -1,0 +1,42 @@
+# INACTIVE EXAMPLE. Merge these routes into the existing site's HTTPS block.
+# example.invalid is a reserved placeholder; do not activate this file as-is.
+example.invalid {
+    # Caddy obtains TLS for a real hostname after the operator configures DNS.
+    tls {
+        protocols tls1.2 tls1.3
+    }
+
+    # Path matchers normalize escaping/dot segments and are case-insensitive.
+    @chatDev path /chat/api/dev*
+
+    handle /chat {
+        redir /chat/ 308
+    }
+
+    handle /chat/* {
+        # route preserves order; a separate named handle could sort AFTER proxy.
+        route {
+            respond @chatDev 404
+            # Keep /chat intact: the app must have basePath=/chat and an explicit
+            # publicOrigin=https://YOUR_EXISTING_HOST. Origin and Host pass through.
+            # Do not use handle_path, uri strip_prefix, or rewrite Origin.
+            reverse_proxy 127.0.0.1:8321 {
+                header_up X-Forwarded-Prefix /chat
+                # Default: discard spoofable identity/capability headers.
+                header_up -CF-Connecting-IP
+                header_up -X-Chatroom-Proxy-Token
+                # OPTIONAL DIRECT-CADDY CLIENT IDENTITY:
+                # Replace the TWO deletion lines above with these TWO lines.
+                # Set the same >=32-character random CHATROOM_PROXY_TOKEN in
+                # Caddy's environment and the Node service's environment.
+                # header_up CF-Connecting-IP {http.request.remote.host}
+                # header_up X-Chatroom-Proxy-Token {$CHATROOM_PROXY_TOKEN}
+                # Uses the actual socket peer, never a supplied CF header.
+                # If behind Cloudflare, that peer is an edge: see README.txt.
+                flush_interval -1
+            }
+        }
+    }
+
+    # KEEP the site's other existing handlers here. No catch-all proxy is added.
+}

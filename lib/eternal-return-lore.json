@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "reviewedAt": "2026-10-02",
+  "scope": "세계관·현재 입주 인물·확인된 관계. 패치/메타/전작 설정은 포함하지 않음.",
+  "sources": {
+    "world": {"kind":"publisher_primary","title":"이터널 리턴 공식 게임 소개","url":"https://playeternalreturn.com/about?hl=ko-KR","checkedAt":"2026-10-02"},
+    "adina": {"kind":"official_linked_database","title":"공식 연계 실험체 DB: 아디나","url":"https://game.naver.com/lounge/Eternal_Return/db/character/CH_AD_670_260","checkedAt":"2026-09-30","evidence":"data/character-research/adina-bianca.json: verified_facts a1-a4, a6"},
+    "bianca": {"kind":"official_linked_database","title":"공식 연계 실험체 DB: 비앙카","url":"https://game.naver.com/lounge/Eternal_Return/db/character/CH_AD_670_175","checkedAt":"2026-09-30","evidence":"data/character-research/adina-bianca.json: verified_facts b1-b3, b5-b6"},
+    "eleven": {"kind":"official_linked_database","title":"공식 연계 실험체 DB: 일레븐","url":"https://game.naver.com/lounge/Eternal_Return/db/character/CH_AD_670_96","checkedAt":"2026-09-30","evidence":"data/character-research/eleven-lucia.json: canon_facts E1-E4"},
+    "lucia_ceres": {"kind":"publisher_primary","title":"공식 캐릭터 소개: 루치아·세레스의 이야기","url":"https://event.playeternalreturn.com/ER/CHARACTER&SKIN?hl=ko-KR&tab=1","checkedAt":"2026-10-02"},
+    "lovely_eleven": {"kind":"official_if","title":"러블리 세레나데 대작전: 별도 IF 이야기","url":"https://event.playeternalreturn.com/2024/ER/Season5_LovelyEleven?hl=ko-KR","checkedAt":"2026-10-02"},
+    "nadja": {"kind":"publisher_primary","title":"공식 개발일지: 오퍼레이터 나쟈","url":"https://playeternalreturn.com/posts/news/1242?hl=ko-KR","checkedAt":"2026-10-02","evidence":"공식 문서 제목에서 오퍼레이터 역할 확인; 상세 안내 역할은 기존 data/character-research/nadja.json 근거"}
+  },
+  "cards": [
+    {"id":"world","title":"루미아 섬과 아글라이아","kind":"canon","sources":["world"],"text":"외부와 떨어진 루미아 섬에서는 과학집단 아글라이아가 신인류를 목표로 인간 대상 생존실험을 진행한다. 이터널 리턴은 탐색·제작·전투를 거쳐 팀으로 생존하는 게임이다. 이 방에서 그 실험을 실제 진행하거나 매번 전투 이야기를 해야 한다는 뜻은 아니다."},
+    {"id":"adina","title":"아디나의 배경","kind":"canon","sources":["adina"],"text":"작은 카페에서 커피와 대화를 나누는 친절한 점성술사. 밤하늘을 살피며, 소개문은 점괘가 정확하다고 묘사한다. 수정구 안의 소중한 친구가 루미아 섬으로 향한 계기와 연결된다. 그 친구의 이름·정체·죽음의 사연은 이 자료로 단정하지 않는다. 현실 사용자의 미래를 확정하는 능력이 있다는 뜻도 아니다."},
+    {"id":"bianca","title":"비앙카의 배경","kind":"canon","sources":["bianca"],"text":"자신을 뱀파이어라고 여기는 소녀로 귀족풍 말투를 쓴다. 햇빛에 타버린다며 양산을 쓰고, 주변 사람들과 가족은 역할 놀이로 여겼다. 전학생 복장은 학교 테마 스킨이다. 진조를 자처하는 장난은 가능하되 실제 수백 년의 삶이나 다른 입주자의 혈족이라는 설정을 만들어 공식 사실로 삼지 않는다."},
+    {"id":"eleven","title":"일레븐의 배경","kind":"canon","sources":["eleven"],"text":"Eleventh Table 채널의 낙천적인 리뷰 방송인. 맛집 외에 풍경과 숨은 명소도 다루고, 밝은 반응과 성실함이 특징이다. 햄버거를 좋아하지만 모든 관심사가 음식에 한정되지는 않는다. 부유한 집안의 외동딸이라는 소개가 있다. 이 방의 대화가 실제 외부 채널로 방송 중이라고 지어내지는 않는다."},
+    {"id":"lucia","title":"루치아의 배경","kind":"canon","sources":["lucia_ceres"],"text":"총기 사업을 하는 페란테 가문의 막내딸. 유모가 들려준 총사 이야기와 고전 머스킷에 꿈을 품었다. 가족의 가혹한 대우를 교육이라고 받아들인 것은 루치아의 자기설명이며, 좋은 가족이었다는 객관적 사실은 아니다. 높은 곳을 피하게 된 기억을 이야기한다. 그 일을 매번 꺼낼 필요는 없다."},
+    {"id":"lucia_ceres","title":"루치아와 세레스","kind":"canon","sources":["lucia_ceres"],"text":"루치아가 이름을 지어준 사용인 세레스는 훼손된 도면을 함께 복원하며 소중한 친구가 되었다. 루치아는 보석을 나누어 자신의 브로치와 세레스의 검에 사용했다. 세레스의 이야기에서도 임무를 넘어 루치아를 지키려는 마음이 드러난다. 가족의 사망 통보 뒤에도 세레스가 다시 나타나므로 확정 사망이라 하지 않는다. 연인·배우자·혈족이라고 확정할 근거는 여기 없다."},
+    {"id":"eleven_skin","title":"일레븐의 의상과 IF","kind":"official_if","sources":["lovely_eleven"],"text":"러블리 세레나데 이벤트는 정식 이야기와 별개인 IF라고 공식 안내한다. 웨딩드레스 콘셉트의 방송 의상과 사진 이야기가 나오지만 본편의 결혼·배우자 관계를 증명하지 않는다. 이 방에서의 이름은 일레븐이며, 입고 있는 스킨이 기본 정체성이나 새 관계를 자동으로 만들지 않는다."},
+    {"id":"nadja","title":"나쟈의 역할","kind":"canon_and_room_adaptation","sources":["nadja"],"text":"나쟈는 공식 오퍼레이터 캐릭터다. 이 방에서 개발 요청을 받는 역할은 ERCraft의 별도 각색이다. 그 역할만으로 다른 실험체의 창조자·가족·상관이라는 공식 관계가 생기지 않는다. 실제 개발 완료 여부는 도구 결과로 확인한다."}
+  ]
+}

@@ -1,7 +1,13 @@
 // AI 단톡방 client: renders the room, streams updates over SSE, drives the composer
 // and the shared-workspace panel. UI text comes from i18n.js (room language in <html lang>).
 
-import { t, applyI18n, locale } from '/i18n.js';
+import { t, applyI18n, locale } from './i18n.js';
+import { setPersonaMembers, memberName, memberColor, memberAccentColor, aliasesFor, norm, avatarMarkup, createAvatar } from './persona-client.js';
+import { systemText, quotaLabel, quotaPlan, quotaNote, sessionView, sleepView } from './presentation.js';
+import { appUrl } from './base-path.js';
+import { createLiarPanel } from './liar-panel.js';
+import { setSharedImage } from './shared-images.js';
+import { TimelineWindow, RECENT_MESSAGES, HISTORY_PAGE, LIVE_MESSAGES, uniqueMessages, rememberPending, recentSnapshot, overlaps } from './timeline-window.js';
 
 applyI18n();
 
@@ -21,50 +27,64 @@ const ICON = {
 };
 const QUICK_EMOJI = ['👍', '😂', '❤️', '😮', '🤔', '🔥', '👀', '🙏'];
 const IMG_EXT = ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'];
-const AI_IDS = ['claude', 'gpt', 'grok', 'gemini'];
-// Every spelling that calls a member, in any room language (same lists as lib/members.mjs).
-const ALIASES = {
-  claude: ['claude', '클로드', 'クロード'],
-  gpt: ['chatgpt', 'gpt', '지피티', '챗지피티', '쳇지피티', 'チャットgpt', 'チャッピー', 'ジーピーティー'],
-  grok: ['grok', '그록', 'グロック', 'グロク'],
-  gemini: ['gemini', '제미나이', '제미니', 'ジェミニ', 'ジェミナイ'],
-};
+const AI_IDS = ['eleven', 'adina', 'lucia', 'bianca'];
 const STATUSES = ['idle', 'reading', 'typing', 'away', 'sleeping', 'off', 'missing', 'error'];
-const statusText = (st) => (STATUSES.includes(st) ? t(`status.${st}`) : st);
+const statusText = (st) => t(`status.${STATUSES.includes(st) ? st : 'idle'}`);
 
 const S = {
   room: {}, members: {}, messages: [], byId: new Map(), files: [], notes: {}, usage: {},
+  session: sessionView(null), sleeps: {}, liar: null,
   replyTo: null, openPath: null, tab: 'files', stuck: true, unseen: 0,
   freshFiles: new Set(), hadError: false, mention: null, pending: null, sending: false,
+  tail: null, needsSnapshot: false,
 };
 
 const app = $('#app');
 const tl = $('#timeline');
 const msgsBox = $('#msgs');
 const input = $('#input');
+const isAdmin = () => S.session.role === 'admin' && S.session.authenticated;
+let sessionEpoch = 0, stateLoad = 0, stream;
+let pendingState = null;
 
 // ---------------------------------------------------------------------------
 // helpers
 
 const extOf = (p) => (String(p).split('.').pop() || '').toLowerCase();
-const wsUrl = (p, bust) => '/ws/' + String(p).split('/').map(encodeURIComponent).join('/') + (bust ? `?t=${bust}` : '');
-// The dev session (Claude Code, joined through the dev bridge) is a participant but not a scheduled AI.
-const DEV = {
-  id: 'dev', name: t('dev.name'), color: '#0f766e',
-  aliases: ['개발자', '개발 세션', '개발세션', '빌더', 'dev', 'developer', '開発者', 'デベロッパー'],
+const wsUrl = (p, bust) => appUrl('/ws/' + String(p).split('/').map(encodeURIComponent).join('/') + (bust ? `?t=${bust}` : ''));
+const fileRevision = file => file && `${file.mtime}-${file.size}-${file.available !== false}`;
+const workspaceImageUrl = (p, { original = false } = {}) => {
+  const file = S.files.find(f => f.path === p);
+  if (file?.available === false) return '';
+  const url = wsUrl(p, file && `${file.mtime}-${file.size}`);
+  // Keep animated/vector images and transparent stickers in their original form.
+  return !original && !file?.sticker && /\.(?:png|jpe?g|webp)$/i.test(p)
+    ? `${url}${url.includes('?') ? '&' : '?'}preview=1` : url;
 };
-const avatar = (id) => (id === DEV.id ? '/avatars/dev.svg' : `/avatars/${id}-128.webp`);
+// The dev session, joined through the dev bridge, is a participant but not a scheduled AI.
+const DEV = {
+  id: 'dev', name: memberName('dev'), color: memberColor('dev'),
+  aliases: aliasesFor('dev'),
+};
 function nameOf(id) {
-  if (id === 'user') return S.room.userName || t('user.default');
+  if (id === 'user') return 'ERCraft';
   if (id === 'system') return t('name.system');
   if (id === DEV.id) return DEV.name;
-  return S.members[id]?.name || id;
+  return memberName(id);
 }
 function colorOf(id) {
   if (id === 'user') return 'var(--mine)';
   if (id === DEV.id) return DEV.color;
-  return S.members[id]?.color || 'var(--muted)';
+  return memberColor(id) || 'var(--muted)';
 }
+function setMemberColors(node, id) {
+  const color = colorOf(id), accent = memberAccentColor(id) || color;
+  node.style.setProperty('--c', color);
+  node.style.setProperty('--accent-c', accent);
+  node.classList.toggle('has-accent', accent !== color);
+}
+const liarPanel = createLiarPanel({ nameOf });
+window.addEventListener('pagehide', (event) => { if (!event.persisted) liarPanel.dispose(); });
 const devOnline = () => !!S.room.dev?.online;
 function timeLabel(ts) {
   return new Date(ts).toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' });
@@ -91,13 +111,19 @@ function toast(text, ms = 2600) {
   toast.timer = setTimeout(() => { box.hidden = true; }, ms);
 }
 
-async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : {
+async function api(path, body, options = {}) {
+  const authPath = path === '/api/admin/login' || path === '/api/admin/logout';
+  if (body !== undefined && !authPath && !isAdmin()) {
+    throw Object.assign(new Error(t('auth.required')), { status: 403 });
+  }
+  const res = await fetch(appUrl(path), body === undefined ? { cache: 'no-store', credentials: 'same-origin', ...options } : {
     method: 'POST',
+    credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
+    if (!authPath && [401, 403].includes(res.status)) revokeSession();
     let msg = `${res.status}`;
     try { msg = (await res.json()).error || msg; } catch { /* not json */ }
     const err = new Error(msg);
@@ -107,16 +133,116 @@ async function api(path, body) {
   return res.json();
 }
 
-// Names are compared in lower case with hiragana folded to katakana (@くろーど finds クロード).
-const norm = (x) => String(x).toLowerCase()
-  .replace(/[\u3041-\u3096]/g, (c) => String.fromCharCode(c.charCodeAt(0) + 0x60));
+function renderAccess() {
+  const admin = isAdmin();
+  document.body.dataset.role = admin ? 'admin' : 'viewer';
+  for (const node of document.querySelectorAll('[data-admin-only]')) node.hidden = !admin;
+  for (const node of document.querySelectorAll('.settings button, .settings select')) node.disabled = !admin;
+  for (const id of ['power', 'offbarOn']) $('#' + id).disabled = !admin;
+  for (const id of ['send', 'attachBtn', 'stickerBtn', 'fileInput']) $('#' + id).disabled = !admin || S.sending;
+  $('#power').title = admin ? '' : t('auth.powerHint');
+  $('#powerAccess').title = admin ? '' : t('auth.powerHint');
+  $('#powerAccess').tabIndex = admin ? -1 : 0;
+  $('#powerAccess').setAttribute('aria-label', admin ? t('power.on') : t('auth.powerHint'));
+  input.readOnly = !admin;
+  input.placeholder = t(admin ? 'composer.placeholder' : 'auth.composer');
+  $('#viewerHint').hidden = admin;
+  $('#adminLogin').hidden = admin;
+}
+
+function applySession(value) {
+  const wasAdmin = isAdmin();
+  S.session = sessionView(value);
+  sessionEpoch++;
+  cancelHistory();
+  if (isAdmin() && $('#loginDialog').open) $('#loginDialog').close();
+  if (!isAdmin()) {
+    // Public SSE updates must never retain private settings after expiry/logout.
+    const { running, sleeping, roomName, userName, lang, dev } = S.room;
+    S.room = { running, sleeping, roomName, userName, lang, dev };
+    S.usage = {};
+    input.value = '';
+    clearReply(); clearAttach(); closeMention(); toggleStickerPop(false);
+    $('#reactPop').hidden = true;
+    $('#fileInput').value = '';
+  }
+  renderAccess();
+  if (wasAdmin !== isAdmin()) {
+    renderAllMessages();
+    renderMembers();
+  }
+}
+
+function revokeSession() {
+  stateLoad++; // Ignore an older admin /state response arriving after revocation.
+  applySession(null);
+}
+
+async function refreshSession() {
+  revokeSession();
+  try { await load({ recoverHistory: true }); } catch { toast(t('auth.refreshFailed')); }
+}
+
+async function changeRoom(body) {
+  const epoch = sessionEpoch;
+  try {
+    const room = await api('/api/room', body);
+    if (isAdmin() && epoch === sessionEpoch) { S.room = { ...S.room, ...room }; renderRoom(); }
+  } catch { renderRoom(); toast(t('toast.changeFailed')); }
+}
+
+function openLogin() {
+  if (isAdmin()) return;
+  $('#loginError').hidden = true;
+  $('#adminPassword').value = '';
+  if (!$('#loginDialog').open) $('#loginDialog').showModal();
+  $('#adminPassword').focus();
+}
+$('#adminLogin').onclick = (e) => { e.preventDefault(); openLogin(); };
+$('#loginClose').onclick = () => $('#loginDialog').close();
+$('#loginDialog').addEventListener('close', () => { $('#adminPassword').value = ''; });
+$('#loginForm').onsubmit = async (e) => {
+  e.preventDefault();
+  if ($('#loginSubmit').disabled) return;
+  const password = $('#adminPassword').value;
+  if (!password) return;
+  $('#adminPassword').value = '';
+  $('#loginSubmit').disabled = true;
+  $('#loginError').hidden = true;
+  try {
+    await api('/api/admin/login', { password });
+    await load();
+    if (!isAdmin()) throw new Error('session_unconfirmed');
+    connect(); // Establish the new HttpOnly-cookie session for expiry events.
+    $('#loginDialog').close();
+    toast(t('auth.loggedIn'));
+  } catch (error) {
+    $('#loginError').textContent = t(error.status === 429 ? 'auth.tooMany' : error.status === 401 || error.status === 403 ? 'auth.invalid' : 'auth.loginFailed');
+    $('#loginError').hidden = false;
+    $('#adminPassword').focus();
+  } finally {
+    $('#adminPassword').value = '';
+    $('#loginSubmit').disabled = false;
+  }
+};
+$('#adminLogout').onclick = async () => {
+  $('#adminLogout').disabled = true;
+  try {
+    await api('/api/admin/logout', {});
+    revokeSession();
+    connect();
+    await load();
+    toast(t('auth.loggedOut'));
+  } catch { toast(t('auth.logoutFailed')); }
+  finally { $('#adminLogout').disabled = false; }
+};
 
 // Who does the word after "@" call? Japanese (and Korean) put particles right after a name
-// ("@Claudeさん", "@그록아"), so the longest name at the start of the word wins; a Latin
+// ("@イレブンさん", "@일레븐아"), so the longest name at the start of the word wins; a Latin
 // name must not run on into more Latin letters ("@device" is not "@dev").
 function mentionHit(word) {
   const cands = [];
-  for (const id of AI_IDS) for (const a of [...ALIASES[id], nameOf(id)]) cands.push([norm(a), colorOf(id)]);
+  for (const id of AI_IDS) for (const a of aliasesFor(id)) cands.push([norm(a), colorOf(id)]);
   cands.push([norm(nameOf('user')), 'var(--mine)']);
   for (const a of [...DEV.aliases, DEV.name]) cands.push([norm(a), DEV.color]);
   let best = null;
@@ -216,7 +342,7 @@ function mdInline(s) {
 // messages
 
 function snippet(m) {
-  if (m.text) return m.text.replace(/\s+/g, ' ').slice(0, 90);
+  if (m.text) return systemText(m, m.by ? nameOf(m.by) : '', t).replace(/\s+/g, ' ').slice(0, 90);
   if (m.attach?.sticker) return t('snippet.sticker', { name: stickerName(m.attach.path) });
   if (m.attach) return m.attach.upload ? t('snippet.photo') : t('snippet.attach', { path: m.attach.path });
   return '';
@@ -227,7 +353,7 @@ function buildQuote(id) {
   const b = el('button', 'quote');
   b.type = 'button';
   if (q) {
-    b.style.setProperty('--c', colorOf(q.from));
+    setMemberColors(b, q.from);
     b.innerHTML = `<span class="qn">${esc(nameOf(q.from))}</span>${esc(snippet(q))}`;
   } else {
     b.textContent = t('quote.missing', { id });
@@ -238,38 +364,38 @@ function buildQuote(id) {
 
 // Workspace pages run in a sandbox. The server's CSP header (`sandbox allow-scripts`, no network)
 // already gives them an opaque origin, so allow-same-origin here does not let them reach this
-// page; without it the Claude desktop browser pane refuses to load the frame at all.
+// page; embedded desktop browsers require it to load the frame.
 const WS_FRAME_SANDBOX = 'allow-scripts allow-same-origin';
 
-// What Grok and Gemini get instead of the photo (their CLIs take no images).
+// Shared description accompanying an attached photo.
 function descCap(desc) {
   const cap = el('div', 'att-cap att-desc');
   cap.textContent = t('desc.cap', { desc: desc.length > 140 ? desc.slice(0, 140) + '…' : desc });
-  cap.title = `${t('desc.title')}\n\n${desc}`;
+  cap.title = `${t('desc.titleGeneric')}\n\n${desc}`;
   return cap;
 }
 
 function buildAttach(a) {
   const e = extOf(a.path);
-  const url = wsUrl(a.path);
+  const url = workspaceImageUrl(a.path);
   if (a.sticker && IMG_EXT.includes(e)) {
     const img = el('img', 'att-sticker');
-    img.src = url;
+    setSharedImage(img, url);
+    img.dataset.workspaceImage = a.path;
     img.alt = stickerName(a.path);
     img.title = a.path;
     img.loading = 'lazy';
-    img.onclick = () => lightbox(url, a.path);
-    img.onload = () => { if (S.stuck) toBottom(); };
+    img.onclick = () => lightbox(workspaceImageUrl(a.path, { original: true }), a.path, a.path);
     return img;
   }
   if (IMG_EXT.includes(e)) {
     const wrap = el('div', 'att-img-wrap');
     const img = el('img', `att-img${e === 'svg' ? ' svg' : ''}`);
-    img.src = url;
+    setSharedImage(img, url, { feedback: true });
+    img.dataset.workspaceImage = a.path;
     img.alt = a.prompt || a.path;
     img.loading = 'lazy';
-    img.onclick = () => lightbox(url, a.prompt ? `🎨 ${a.prompt}` : a.path);
-    img.onload = () => { if (S.stuck) toBottom(); };
+    img.onclick = () => lightbox(workspaceImageUrl(a.path, { original: true }), a.prompt ? `🎨 ${a.prompt}` : a.path, a.path);
     wrap.append(img);
     if (a.prompt) {
       const cap = el('div', 'att-cap');
@@ -303,6 +429,7 @@ function buildAttach(a) {
 
 function buildTools(m) {
   const bar = el('div', 'tools');
+  if (!isAdmin()) { bar.hidden = true; return bar; }
   const r = el('button', '', ICON.reply);
   r.type = 'button';
   r.title = t('tools.reply');
@@ -322,10 +449,11 @@ function buildReacts(m) {
   box.dataset.for = m.id;
   for (const [emo, list] of Object.entries(m.reactions || {})) {
     if (!list.length) continue;
-    const c = el('button', `chip${list.includes('user') ? ' me' : ''}`, `${esc(emo)} <b>${list.length}</b>`);
+    const c = el('button', `chip${isAdmin() && list.includes('user') ? ' me' : ''}`, `${esc(emo)} <b>${list.length}</b>`);
     c.type = 'button';
     c.title = list.map(nameOf).join(t('list.sep'));
-    c.onclick = () => sendReact(m.id, emo);
+    c.disabled = !isAdmin();
+    if (isAdmin()) c.onclick = () => sendReact(m.id, emo);
     box.append(c);
   }
   return box;
@@ -334,16 +462,16 @@ function buildReacts(m) {
 function buildSys(m, animate) {
   const d = el('div', `sys k-${m.kind || 'info'}${animate ? ' new' : ''}`);
   d.id = `m${m.id}`;
+  const text = systemText(m, m.by ? nameOf(m.by) : '', t);
   if (m.by) {
     d.style.setProperty('--c', colorOf(m.by));
     const n = nameOf(m.by);
-    const text = String(m.text || '');
     const at = text.indexOf(n);
     d.innerHTML = at >= 0
       ? `${esc(text.slice(0, at))}<span class="who">${esc(n)}</span>${esc(text.slice(at + n.length))}`
       : esc(text);
   } else {
-    d.textContent = m.text;
+    d.textContent = text;
   }
   if (m.kind === 'file' && m.file) {
     d.title = t('sys.openInWs');
@@ -360,23 +488,22 @@ function buildMsg(m, prev, animate) {
     return frag;
   }
   const cont = prev && prev.from === m.from && m.ts - prev.ts < 180000 && sameDay(prev.ts, m.ts)
-    && (prev.model || '') === (m.model || '') && !!prev.deep === !!m.deep;
-  const mine = m.from === 'user';
+    && !!prev.deep === !!m.deep;
+  const mine = m.from === 'user' && isAdmin();
   const row = el('div', `msg${mine ? ' mine' : ''}${cont ? ' cont' : ''}${animate ? ' new' : ''}`);
   row.id = `m${m.id}`;
-  row.style.setProperty('--c', colorOf(m.from));
+  setMemberColors(row, m.from);
   if (!mine) {
-    const av = el('img', 'm-av');
-    av.src = avatar(m.from);
-    av.alt = nameOf(m.from);
-    av.title = t('msg.mention', { name: nameOf(m.from) });
-    av.onclick = () => insertMention(m.from);
+    const av = createAvatar(m.from, 'm-av', nameOf(m.from));
+    if (isAdmin()) {
+      av.title = t('msg.mention', { name: nameOf(m.from) });
+      av.onclick = () => insertMention(m.from);
+    }
     row.append(av);
   }
   const body = el('div', 'm-body');
   if (!mine && !cont) {
-    const model = m.model || S.members[m.from]?.model || (m.from === DEV.id ? t('dev.sub') : '');
-    body.append(el('div', 'm-head', `<span class="n">${esc(nameOf(m.from))}</span><span class="model">${esc(model)}</span>${m.deep ? `<span class="deep-badge" title="${esc(m.boostWhy || t('boost.name'))}">${esc(t('boost.badge'))}</span>` : ''}`));
+    body.append(el('div', 'm-head', `<span class="n">${esc(nameOf(m.from))}</span>${m.deep ? `<span class="deep-badge" title="${esc(t('boost.name'))}">${esc(t('boost.badge'))}</span>` : ''}`));
   }
   if (m.deep) row.classList.add('deep');
   const line = el('div', 'line');
@@ -397,135 +524,200 @@ function buildMsg(m, prev, animate) {
   return frag;
 }
 
-function renderAllMessages() {
-  msgsBox.innerHTML = '';
-  let prev = null;
-  for (const m of S.messages) {
-    msgsBox.append(buildMsg(m, prev, false));
-    prev = m;
-  }
-  $('#loadMore').hidden = !(S.messages.length && S.messages[0].id > 1);
+const timelineText = {
+  ko: { loading: '이전 대화를 불러오는 중…', retry: '불러오지 못했어요 · 다시 시도', start: '대화의 시작', latest: '최근 대화로 이동 ↓', gap: '연결이 복구되었어요. 최근 대화로 이동해 이어서 볼 수 있어요.' },
+  en: { loading: 'Loading earlier messages…', retry: 'Could not load · Try again', start: 'Start of conversation', latest: 'Jump to latest ↓', gap: 'Connection restored. Jump to the latest conversation to continue.' },
+  ja: { loading: '以前の会話を読み込み中…', retry: '読み込めませんでした · 再試行', start: '会話の始まり', latest: '最新の会話へ ↓', gap: '接続が復旧しました。最新の会話へ移動できます。' },
+}[locale.split('-')[0]] || { loading: 'Loading…', retry: 'Try again', start: 'Start of conversation', latest: 'Jump to latest ↓', gap: 'Connection restored. Jump to latest.' };
+const history = { token: 0, busy: false, more: true, error: false, armed: true, controller: null };
+const timeline = new TimelineWindow({
+  scroller: tl, container: msgsBox, build: buildMsg, pinned: () => S.stuck && !S.tail,
+  onScroll: ({ top, up, internal }) => {
+    if (internal) return;
+    // Even a single wheel notch upward is an explicit choice to read history.
+    // Rejoin live following only after the reader reaches the actual bottom.
+    S.stuck = !S.tail && !up && tl.scrollHeight - top - tl.clientHeight <= 2;
+    if (S.stuck) {
+      S.unseen = 0;
+      if (S.messages.length > LIVE_MESSAGES) { pruneLiveMessages(); scheduleMessages(); }
+    }
+    renderJump();
+    if (top > 180) history.armed = true;
+    if (up && top < 100 && history.armed && !history.error) loadOlder();
+  },
+});
+let messageFrame;
+function scheduleMessages() {
+  if (messageFrame) return;
+  messageFrame = requestAnimationFrame(() => {
+    messageFrame = null;
+    timeline.setItems(S.messages.slice());
+  });
 }
-
+function renderAllMessages() {
+  timeline.setItems(S.messages.slice(), { invalidate: true });
+  renderHistory();
+}
+function renderHistory() {
+  const button = $('#loadMore');
+  button.hidden = !S.messages.length;
+  button.disabled = history.busy || !history.more;
+  button.setAttribute('aria-busy', String(history.busy));
+  button.textContent = history.busy ? timelineText.loading : history.error ? timelineText.retry
+    : history.more ? t('chat.loadMore') : timelineText.start;
+}
+function renderJump() {
+  const j = $('#jump');
+  j.hidden = !S.needsSnapshot && !S.tail && !S.unseen && S.stuck;
+  j.textContent = S.tail || S.needsSnapshot ? timelineText.latest : S.unseen ? t('chat.jumpN', { n: S.unseen }) : t('chat.jump');
+  j.title = S.tail || S.needsSnapshot ? timelineText.gap : '';
+}
+function reindexMessages() {
+  S.byId = new Map([...S.messages, ...(S.tail || [])].map(m => [m.id, m]));
+}
+function pruneLiveMessages() {
+  if (S.messages.length <= LIVE_MESSAGES) return;
+  const removed = S.messages.splice(0, S.messages.length - LIVE_MESSAGES);
+  for (const m of removed) S.byId.delete(m.id);
+  history.more = true;
+}
 function addMessage(m) {
-  if (S.byId.has(m.id)) return;
-  const prev = S.messages[S.messages.length - 1];
-  S.messages.push(m);
-  S.byId.set(m.id, m);
-  const stick = S.stuck || m.from === 'user';
-  msgsBox.append(buildMsg(m, prev, true));
-  if (stick) toBottom();
-  else {
-    S.unseen++;
-    const j = $('#jump');
-    j.hidden = false;
-    j.textContent = t('chat.jumpN', { n: S.unseen });
+  if (!Number.isSafeInteger(m?.id) || S.byId.has(m.id)) return;
+  if (S.tail || S.needsSnapshot) {
+    S.tail = uniqueMessages([...(S.tail || []), m]).slice(-RECENT_MESSAGES);
+    reindexMessages();
+  } else {
+    // SSE ids increase; an older duplicate/out-of-order event must not reorder DOM.
+    if (S.messages.length && m.id < S.messages.at(-1).id) {
+      S.messages = uniqueMessages([...S.messages, m]);
+    } else S.messages.push(m);
+    S.byId.set(m.id, m);
+    if (S.stuck) pruneLiveMessages();
+    scheduleMessages();
   }
+  if (!S.stuck || S.tail) S.unseen++;
+  renderJump();
   if ((m.kind === 'file' || m.attach) && !wsVisible()) $('#wsBadge').hidden = false;
 }
-
 function updateMessage(m) {
   const old = S.byId.get(m.id);
   if (!old) return;
-  old.reactions = m.reactions;
-  if (m.attach?.desc && old.attach && !old.attach.desc) {
-    old.attach.desc = m.attach.desc;
-    const wrap = msgsBox.querySelector(`#m${m.id} .att-img-wrap`);
-    if (wrap) wrap.append(descCap(m.attach.desc));
-  }
-  const box = msgsBox.querySelector(`.reacts[data-for="${m.id}"]`);
-  if (box) {
-    const stick = S.stuck;
-    box.replaceWith(buildReacts(old));
-    if (stick) toBottom();
-  }
+  if (m.reactions !== undefined) old.reactions = m.reactions;
+  if (m.attach) old.attach = { ...old.attach, ...m.attach };
+  // Rebuild only a mounted row. Offscreen updates stay in lightweight data.
+  timeline.invalidate(m.id);
 }
-
 function toBottom() {
-  tl.scrollTop = tl.scrollHeight;
-  S.stuck = true;
-  S.unseen = 0;
-  $('#jump').hidden = true;
+  if (S.needsSnapshot) {
+    if (!pendingState) load({ recoverHistory: true }).then(() => { if (!S.needsSnapshot) toBottom(); })
+      .catch(() => toast(t('toast.noServer')));
+    return;
+  }
+  if (S.tail) {
+    cancelHistory();
+    S.messages = S.tail; S.tail = null; reindexMessages();
+    history.more = S.messages.length > 0 && S.messages[0].id > 1;
+    history.error = false; history.armed = true;
+  }
+  S.stuck = true; S.unseen = 0;
+  pruneLiveMessages();
+  timeline.setItems(S.messages.slice());
+  timeline.toBottom(); renderHistory(); renderJump();
 }
-
-tl.addEventListener('scroll', () => {
-  S.stuck = tl.scrollHeight - tl.scrollTop - tl.clientHeight < 140;
-  if (S.stuck) { S.unseen = 0; $('#jump').hidden = true; }
-});
 $('#jump').onclick = toBottom;
 
 function jumpTo(id) {
+  if (S.tail?.some(m => m.id === id)) toBottom();
+  S.stuck = false;
+  if (!timeline.jump(id)) { toast(t('toast.oldMessage')); return; }
+  renderJump();
   const row = document.getElementById(`m${id}`);
-  if (!row) { toast(t('toast.oldMessage')); return; }
-  row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-  row.classList.add('hl');
-  setTimeout(() => row.classList.remove('hl'), 1600);
+  row?.classList.add('hl');
+  setTimeout(() => row?.classList.remove('hl'), 1600);
 }
-
-$('#loadMore').onclick = async () => {
+function cancelHistory() {
+  history.token++; history.controller?.abort(); history.controller = null;
+  history.busy = false; renderHistory();
+}
+async function loadOlder() {
+  if (history.busy || !history.more || pendingState) return;
   const first = S.messages[0];
   if (!first) return;
-  const { messages } = await api(`/api/history?before=${first.id}`);
-  if (!messages.length) { $('#loadMore').hidden = true; return; }
-  const fromBottom = tl.scrollHeight - tl.scrollTop;
-  S.messages = messages.concat(S.messages);
-  for (const m of messages) S.byId.set(m.id, m);
-  renderAllMessages();
-  tl.scrollTop = tl.scrollHeight - fromBottom;
-};
+  const token = ++history.token, epoch = sessionEpoch, version = stateLoad;
+  history.busy = true; history.error = false; history.armed = false;
+  const controller = history.controller = new AbortController();
+  renderHistory();
+  try {
+    const result = await api(`/api/history?before=${first.id}&limit=${HISTORY_PAGE}`, undefined, { signal: controller.signal });
+    if (token !== history.token || epoch !== sessionEpoch || version !== stateLoad) return;
+    const page = uniqueMessages(result.messages).filter(m => m.id < first.id && !S.byId.has(m.id)).slice(-HISTORY_PAGE);
+    history.more = page.length === HISTORY_PAGE && page[0].id > 1;
+    S.messages = page.concat(S.messages); reindexMessages();
+    timeline.setItems(S.messages.slice());
+  } catch (error) {
+    if (token === history.token && error.name !== 'AbortError') history.error = true;
+  } finally {
+    if (token === history.token) { history.busy = false; history.controller = null; renderHistory(); }
+  }
+}
+$('#loadMore').onclick = () => { S.stuck = false; loadOlder(); };
 
 // ---------------------------------------------------------------------------
 // members, room, typing
 
 function setMembers(list) {
-  for (const m of list) S.members[m.id] = m;
+  const changed = setPersonaMembers(list);
+  S.members = Object.fromEntries(list.map((m) => [m.id, m]));
   renderMembers();
   renderTyping();
   renderHead();
+  if (changed) {
+    liarPanel.update(S.liar);
+    renderAllMessages();
+    if (S.tab === 'notes' && wsVisible()) renderNotes();
+    if (S.tab === 'usage' && wsVisible()) renderUsage();
+  }
 }
 
 function renderMembers() {
+  $('#brandAvatars').innerHTML = AI_IDS.filter((id) => S.members[id]).map((id) => avatarMarkup(id)).join('');
   const ul = $('#members');
   ul.innerHTML = '';
   for (const id of AI_IDS) {
     const m = S.members[id];
     if (!m) continue;
-    const li = el('li', `member st-${m.status}${m.drawing ? ' drawing' : ''}`);
-    li.style.setProperty('--c', m.color);
+    const li = el('li', `member st-${STATUSES.includes(m.status) ? m.status : 'idle'}${m.drawing ? ' drawing' : ''}`);
+    setMemberColors(li, id);
     let status = statusText(m.status);
     if (m.deep && m.status === 'reading') status = t('status.deepReading');
     if (m.drawing) status = m.status === 'typing' ? t('status.typingDrawing') : t('status.drawing');
     if (m.deep) li.classList.add('deep');
-    li.title = [
-      `${m.name} · ${m.maker}`,
-      t('member.default', { model: m.defaultModel || m.model }),
-      m.boostModel ? t('member.boost', { model: m.boostModel }) : '',
-      m.imageGen ? t('member.imageGen') : t('member.svg'),
-      t('member.calls', { n: m.calls }) + (m.lastMs ? ` · ${t('member.last', { s: (m.lastMs / 1000).toFixed(1) })}` : ''),
-      m.lastError ? t('member.error', { error: m.lastError }) : '',
-    ].filter(Boolean).join('\n');
+    li.title = m.name;
     li.innerHTML = `
-      <div class="av-wrap"><img class="av" src="${avatar(id)}" alt=""><span class="st-dot"></span></div>
+      <div class="av-wrap">${avatarMarkup(id, 'av')}<span class="st-dot"></span></div>
       <div class="m-info">
-        <div class="m-name"><span class="n">${esc(m.name)}</span><span class="m-maker">${esc(m.maker)}</span></div>
+        <div class="m-name"><span class="n">${esc(m.name)}</span></div>
         <div class="m-status">${esc(status)}</div>
       </div>`;
-    const q = miniQuota(id);
-    if (q) li.querySelector('.m-info').append(q);
-    const sw = el('label', 'switch');
-    sw.title = m.enabled ? t('member.remove') : t('member.bringBack');
-    sw.innerHTML = `<input type="checkbox" ${m.enabled ? 'checked' : ''} ${m.available ? '' : 'disabled'} aria-label="${esc(t('member.toggleAria', { name: m.name }))}"><span></span>`;
-    sw.querySelector('input').onchange = (e) => api('/api/member', { id, enabled: e.target.checked }).catch(() => toast(t('toast.changeFailed')));
-    li.append(sw);
+    // The sleep badge already describes inactive states; avoid a duplicate line.
+    if (!m.drawing && ['off', 'away', 'sleeping'].includes(m.status)) li.querySelector('.m-status').hidden = true;
+    li.querySelector('.m-info').append(memberSleep(id));
+    if (isAdmin()) {
+      const sw = el('label', 'switch');
+      sw.title = m.enabled ? t('member.remove') : t('member.bringBack');
+      sw.innerHTML = `<input type="checkbox" ${m.enabled ? 'checked' : ''} ${m.available ? '' : 'disabled'} aria-label="${esc(t('member.toggleAria', { name: m.name }))}"><span></span>`;
+      sw.querySelector('input').onchange = (e) => api('/api/member', { id, enabled: e.target.checked }).catch(() => { renderMembers(); toast(t('toast.changeFailed')); });
+      li.append(sw);
+    }
     ul.append(li);
   }
   const dev = el('li', `member dev st-${devOnline() ? 'idle' : 'off'}`);
   dev.style.setProperty('--c', DEV.color);
   dev.title = t('dev.tooltip');
   dev.innerHTML = `
-    <div class="av-wrap"><img class="av" src="${avatar(DEV.id)}" alt=""><span class="st-dot"></span></div>
+    <div class="av-wrap">${avatarMarkup(DEV.id, 'av')}<span class="st-dot"></span></div>
     <div class="m-info">
-      <div class="m-name"><span class="n">${esc(DEV.name)}</span><span class="m-maker">${esc(t('dev.sub'))}</span></div>
+      <div class="m-name"><span class="n">${esc(DEV.name)}</span><span class="m-tag">${esc(t('dev.sub'))}</span></div>
       <div class="m-status">${esc(devOnline() ? t('dev.online') : t('dev.offline'))}</div>
     </div>`;
   ul.append(dev);
@@ -544,7 +736,7 @@ function renderTyping() {
     if (!ids.length) return;
     const g = el('span', `t ${cls}`);
     const names = ids.map((id) => `<b style="--c:${colorOf(id)}">${esc(nameOf(id))}</b>`).join(t('list.sep'));
-    g.innerHTML = ids.map((id) => `<img src="${avatar(id)}" alt="">`).join('')
+    g.innerHTML = ids.map((id) => avatarMarkup(id)).join('')
       + t(key, { names, n: ids.length })
       + ' <span class="dots"><i></i><i></i><i></i></span>';
     box.append(g);
@@ -559,7 +751,7 @@ function renderRoom() {
   const r = S.room;
   app.classList.toggle('running', !!r.running);
   app.classList.toggle('sleeping', !r.running && !!r.sleeping);
-  const roomName = r.roomName || t('app.title');
+  const roomName = t('app.title');
   $('#roomName').textContent = roomName;
   $('#headTitle').textContent = roomName;
   document.title = roomName;
@@ -568,14 +760,15 @@ function renderRoom() {
   $('.power-label').textContent = t(r.running ? 'power.stop' : r.sleeping ? 'power.wake' : 'power.on');
   for (const b of document.querySelectorAll('#speed button')) b.classList.toggle('on', b.dataset.v === r.speed);
   $('#autosleep').value = String(r.autoSleepMin ?? 30);
-  if (![...$('#autosleep').options].some((o) => o.value === String(r.autoSleepMin))) {
+  if (Number.isFinite(r.autoSleepMin) && ![...$('#autosleep').options].some((o) => o.value === String(r.autoSleepMin))) {
     $('#autosleep').append(new Option(t('autosleep.min', { n: r.autoSleepMin }), String(r.autoSleepMin)));
     $('#autosleep').value = String(r.autoSleepMin);
   }
   for (const b of document.querySelectorAll('#boostMode button')) b.classList.toggle('on', b.dataset.v === (r.boostMode || 'auto'));
   const bm = ['auto', 'manual', 'off'].includes(r.boostMode) ? r.boostMode : 'auto';
   $('#boostHint').textContent = t(`boost.hint.${bm}`);
-  $('#stat').textContent = t('stat.calls', { n: r.calls ?? 0 });
+  $('#stat').textContent = '';
+  $('#stat').hidden = true;
   $('#meName').textContent = nameOf('user');
   $('#meAv').textContent = nameOf('user').slice(0, 1);
   const off = !r.running;
@@ -585,6 +778,7 @@ function renderRoom() {
   renderTyping();
   renderHead();
   renderMembers();
+  renderAccess();
 }
 
 function renderHead() {
@@ -594,15 +788,15 @@ function renderHead() {
   $('#devChip').hidden = !devOnline();
 }
 
-$('#power').onclick = () => api('/api/room', { running: !S.room.running }).catch(() => toast(t('toast.noServer')));
-$('#offbarOn').onclick = () => api('/api/room', { running: true }).catch(() => toast(t('toast.noServer')));
+$('#power').onclick = () => changeRoom({ running: !S.room.running });
+$('#offbarOn').onclick = () => changeRoom({ running: true });
 for (const b of document.querySelectorAll('#speed button')) {
-  b.onclick = () => api('/api/room', { speed: b.dataset.v });
+  b.onclick = () => changeRoom({ speed: b.dataset.v });
 }
 for (const b of document.querySelectorAll('#boostMode button')) {
-  b.onclick = () => api('/api/room', { boostMode: b.dataset.v });
+  b.onclick = () => changeRoom({ boostMode: b.dataset.v });
 }
-$('#autosleep').onchange = (e) => api('/api/room', { autoSleepMin: Number(e.target.value) });
+$('#autosleep').onchange = (e) => changeRoom({ autoSleepMin: Number(e.target.value) });
 for (const o of $('#autosleep').options) {
   const n = Number(o.value);
   if (n) o.textContent = n % 60 ? t('autosleep.min', { n }) : t('autosleep.hour', { n: n / 60 });
@@ -612,6 +806,7 @@ for (const o of $('#autosleep').options) {
 // reactions
 
 function openReactPop(id, anchor) {
+  if (!isAdmin()) return;
   const pop = $('#reactPop');
   pop.innerHTML = '';
   for (const e of QUICK_EMOJI) {
@@ -631,6 +826,7 @@ document.addEventListener('pointerdown', (e) => {
   if (!pop.hidden && !pop.contains(e.target) && !e.target.closest('.tools')) pop.hidden = true;
 });
 function sendReact(id, emoji) {
+  if (!isAdmin()) return;
   api('/api/react', { id, emoji }).catch(() => toast(t('toast.reactFailed')));
 }
 
@@ -638,11 +834,12 @@ function sendReact(id, emoji) {
 // composer
 
 function setReply(id) {
+  if (!isAdmin()) return;
   S.replyTo = id;
   const m = S.byId.get(id);
   const chip = $('#replyChip');
   if (!m) { chip.hidden = true; S.replyTo = null; return; }
-  chip.style.setProperty('--c', colorOf(m.from));
+  setMemberColors(chip, m.from);
   chip.innerHTML = `<span class="q">${t('reply.to', { name: esc(nameOf(m.from)), text: esc(snippet(m)) })}</span>`;
   const x = el('button', '', ICON.x);
   x.type = 'button';
@@ -699,7 +896,8 @@ async function shrinkImage(file) {
 }
 
 async function pickImage(file) {
-  if (!file) return;
+  if (!isAdmin() || !file) return;
+  const epoch = sessionEpoch;
   if (!UPLOAD_TYPES.includes(file.type)) { toast(t('upload.types')); return; }
   let blob = file;
   let shrunk = false;
@@ -711,6 +909,7 @@ async function pickImage(file) {
   }
   clearAttach();
   const data = await readAsDataUrl(blob);
+  if (!isAdmin() || epoch !== sessionEpoch) return;
   S.pending = { name: file.name || t('upload.pastedName'), size: blob.size, data, url: URL.createObjectURL(blob), shrunk, orig: file.size };
   renderAttach();
   input.focus();
@@ -734,7 +933,7 @@ function clearAttach() {
   renderAttach();
 }
 
-$('#attachBtn').onclick = () => $('#fileInput').click();
+$('#attachBtn').onclick = () => { if (isAdmin()) $('#fileInput').click(); };
 $('#fileInput').onchange = (e) => {
   pickImage(e.target.files[0]);
   e.target.value = '';
@@ -748,7 +947,7 @@ input.addEventListener('paste', (e) => {
 {
   const box = $('.composer');
   const hasFile = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
-  box.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); box.classList.add('dragover'); });
+  box.addEventListener('dragover', (e) => { if (!hasFile(e)) return; e.preventDefault(); if (isAdmin()) box.classList.add('dragover'); });
   box.addEventListener('dragleave', (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove('dragover'); });
   box.addEventListener('drop', (e) => {
     box.classList.remove('dragover');
@@ -764,7 +963,7 @@ const STICKER_EXT = ['png', 'jpg', 'jpeg', 'webp', 'gif'];
 
 function renderStickerPop() {
   const pop = $('#stickerPop');
-  const list = S.files.filter((f) => f.path.startsWith('stickers/') && STICKER_EXT.includes(extOf(f.path)))
+  const list = S.files.filter((f) => f.sticker === true && f.available !== false && STICKER_EXT.includes(extOf(f.path)))
     .sort((a, b) => a.path.localeCompare(b.path));
   pop.innerHTML = '';
   if (!list.length) {
@@ -773,7 +972,7 @@ function renderStickerPop() {
   }
   const groups = new Map();
   for (const f of list) {
-    const who = f.path.split('/').length > 2 ? f.path.split('/')[1] : '';
+    const who = f.stickerOwner || f.createdBy || f.by || '';
     if (!groups.has(who)) groups.set(who, []);
     groups.get(who).push(f);
   }
@@ -787,7 +986,7 @@ function renderStickerPop() {
       b.type = 'button';
       b.title = stickerName(f.path);
       const img = el('img');
-      img.src = wsUrl(f.path, Math.round(f.mtime));
+      setSharedImage(img, workspaceImageUrl(f.path));
       img.alt = stickerName(f.path);
       img.loading = 'lazy';
       b.append(img);
@@ -799,6 +998,7 @@ function renderStickerPop() {
 }
 
 function toggleStickerPop(open = $('#stickerPop').hidden) {
+  if (open && !isAdmin()) return;
   const pop = $('#stickerPop');
   if (open) { closeMention(); renderStickerPop(); }
   pop.hidden = !open;
@@ -806,6 +1006,7 @@ function toggleStickerPop(open = $('#stickerPop').hidden) {
 }
 
 async function sendSticker(p) {
+  if (!isAdmin()) return;
   toggleStickerPop(false);
   try {
     const r = await api('/api/send', { sticker: p });
@@ -825,6 +1026,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 async function send() {
+  if (!isAdmin()) return;
   const text = input.value.trim();
   const pending = S.pending;
   if (!text && !pending) return;
@@ -842,13 +1044,12 @@ async function send() {
     if (pending) clearAttach();
     if (!r.running) toast(t('toast.roomOff'), 3600);
   } catch (e) {
-    input.value = text;
+    if (isAdmin()) input.value = text;
     autosize();
     toast(e.status === 400 || e.status === 413 ? e.message : t('toast.sendFailed'), 3600);
   } finally {
     S.sending = false;
-    $('#send').disabled = false;
-    $('#attachBtn').disabled = false;
+    renderAccess();
   }
 }
 
@@ -878,18 +1079,19 @@ input.addEventListener('keydown', (e) => {
 });
 
 function updateMention() {
+  if (!isAdmin()) { closeMention(); return; }
   const upto = input.value.slice(0, input.selectionStart);
   const m = upto.match(/@([\p{L}\p{N}_]*)$/u);
   if (!m) { closeMention(); return; }
   const q = norm(m[1]);
-  const ids = AI_IDS.filter((id) => S.members[id] && (!q || [nameOf(id), ...ALIASES[id]].some((a) => norm(a).startsWith(q))));
+  const ids = AI_IDS.filter((id) => S.members[id] && (!q || aliasesFor(id).some((a) => norm(a).startsWith(q))));
   if (!q || [DEV.name, ...DEV.aliases].some((a) => norm(a).startsWith(q))) ids.push(DEV.id);
   if (!ids.length) { closeMention(); return; }
   S.mention = { start: upto.length - m[0].length, index: 0 };
   const pop = $('#mentionPop');
   pop.innerHTML = '';
   ids.forEach((id, i) => {
-    const b = el('button', i === 0 ? 'on' : '', `<img src="${avatar(id)}" alt=""><span class="n" style="--c:${colorOf(id)}">${esc(nameOf(id))}</span>`);
+    const b = el('button', i === 0 ? 'on' : '', `${avatarMarkup(id)}<span class="n" style="--c:${colorOf(id)}">${esc(nameOf(id))}</span>`);
     b.type = 'button';
     b.onmousedown = (e) => e.preventDefault();
     b.onclick = () => {
@@ -910,6 +1112,7 @@ function closeMention() {
   $('#mentionPop').hidden = true;
 }
 function insertMention(id) {
+  if (!isAdmin()) return;
   const add = `@${nameOf(id)} `;
   input.value = input.value && !/\s$/.test(input.value) ? `${input.value} ${add}` : input.value + add;
   autosize();
@@ -945,6 +1148,8 @@ $('#scrim').onclick = () => {
 
 const TAB_BODIES = { files: '#wsFiles', notes: '#wsNotes', usage: '#wsUsage' };
 function selectTab(tab) {
+  // Keep detailed usage functionality in source, unavailable to every role.
+  if (!['files', 'notes'].includes(tab)) return;
   S.tab = tab;
   for (const x of document.querySelectorAll('.tabs button')) x.classList.toggle('on', x.dataset.tab === tab);
   for (const [k, sel] of Object.entries(TAB_BODIES)) $(sel).hidden = k !== tab;
@@ -962,7 +1167,7 @@ function renderWs() {
 
 function fileIcon(f) {
   const e = extOf(f.path);
-  if (IMG_EXT.includes(e)) return `<span class="ic"><img src="${wsUrl(f.path, Math.round(f.mtime))}" alt="" loading="lazy"></span>`;
+  if (f.available !== false && IMG_EXT.includes(e)) return `<span class="ic"><img data-shared-src="${esc(workspaceImageUrl(f.path))}" data-shared-feedback="compact" alt="" loading="lazy"></span>`;
   const label = { md: 'MD', txt: 'TXT', html: 'HTML', htm: 'HTML', json: 'JSON', csv: 'CSV', js: 'JS', mjs: 'JS', py: 'PY', css: 'CSS' }[e] || e.toUpperCase().slice(0, 4);
   return `<span class="ic">${esc(label)}</span>`;
 }
@@ -989,7 +1194,7 @@ function renderFileList() {
       const b = el('button', `file${S.freshFiles.has(f.path) ? ' fresh' : ''}`);
       b.type = 'button';
       const base = f.path.slice(dir ? dir.length + 1 : 0);
-      b.innerHTML = `${fileIcon(f)}<span class="fi"><div class="fn">${esc(base)}</div><div class="fm">${esc(f.by ? nameOf(f.by) : '?')} · ${esc(ago(f.mtime))} · ${esc(size(f.size))}</div></span>`;
+      b.innerHTML = `${fileIcon(f)}<span class="fi"><div class="fn">${esc(base)}</div><div class="fm">${esc(f.by ? nameOf(f.by) : '?')} · ${esc(ago(f.mtime))} · ${esc(f.available === false ? f.unavailable || t('viewer.readFailed') : size(f.size))}</div></span>`;
       b.onclick = () => openFile(f.path);
       sec.append(b);
     }
@@ -1024,14 +1229,18 @@ async function renderViewer() {
   v.append(head, body);
   box.append(v);
   if (!f) { body.append(el('div', 'ws-empty', esc(t('viewer.gone')))); return; }
+  if (f.available === false) { open.remove(); body.append(el('div', 'ws-empty', esc(f.unavailable || t('viewer.readFailed')))); return; }
 
   const e = extOf(p);
   if (IMG_EXT.includes(e)) {
+    open.href = workspaceImageUrl(p, { original: true });
+    open.textContent = ({ ko: '원본 열기', en: 'Open original', ja: '原画像を開く' })[locale.split('-')[0]] || 'Open original';
     const w = el('div', 'img-wrap');
     const img = el('img');
-    img.src = wsUrl(p, Math.round(f.mtime));
+    setSharedImage(img, workspaceImageUrl(p), { eager: true, feedback: true });
+    img.dataset.workspaceImage = p;
     img.alt = p;
-    img.onclick = () => lightbox(img.src, p);
+    img.onclick = () => lightbox(workspaceImageUrl(p, { original: true }), p, p);
     w.append(img);
     body.append(w);
     return;
@@ -1059,11 +1268,15 @@ async function renderViewer() {
 }
 
 function onFiles(list) {
-  const before = new Map(S.files.map((f) => [f.path, f.mtime]));
-  for (const f of list) if (before.get(f.path) !== f.mtime) S.freshFiles.add(f.path);
+  const before = new Map(S.files.map((f) => [f.path, fileRevision(f)]));
+  for (const f of list) if (before.get(f.path) !== fileRevision(f)) S.freshFiles.add(f.path);
   S.files = list;
+  for (const img of document.querySelectorAll('img[data-workspace-image]')) {
+    const p = img.dataset.workspaceImage;
+    setSharedImage(img, list.some(f => f.path === p) ? workspaceImageUrl(p, { original: img.dataset.workspaceOriginal === 'true' }) : '', { eager: img.dataset.sharedEager === 'true' });
+  }
   if (!$('#stickerPop').hidden) renderStickerPop();
-  const changedOpen = S.openPath && before.get(S.openPath) !== list.find((f) => f.path === S.openPath)?.mtime;
+  const changedOpen = S.openPath && before.get(S.openPath) !== fileRevision(list.find((f) => f.path === S.openPath));
   if (S.tab === 'files' && (!S.openPath || changedOpen)) renderWs();
   if (!wsVisible()) $('#wsBadge').hidden = false;
   setTimeout(() => { for (const f of list) S.freshFiles.delete(f.path); if (S.tab === 'files' && !S.openPath) renderFileList(); }, 20000);
@@ -1086,7 +1299,7 @@ function renderNotes(flashId) {
     const card = el('div', `note-card${flashId === id ? ' flash' : ''}`);
     card.style.setProperty('--c', colorOf(id));
     const text = (S.notes[id] || '').trim();
-    card.innerHTML = `<div class="nh"><img src="${avatar(id)}" alt=""><span class="n">${esc(nameOf(id))}</span><span class="s">${text ? esc(t('notes.lines', { n: text.split('\n').length })) : ''}</span></div>`;
+    card.innerHTML = `<div class="nh">${avatarMarkup(id)}<span class="n">${esc(nameOf(id))}</span><span class="s">${text ? esc(t('notes.lines', { n: text.split('\n').length })) : ''}</span></div>`;
     if (text) {
       const pre = el('pre');
       pre.textContent = text;
@@ -1106,6 +1319,28 @@ function onNote({ id, text }) {
 
 // ---------------------------------------------------------------------------
 // usage limits (account-wide, polled by the server without spending model calls)
+
+function memberSleep(id) {
+  const sleep = sleepView(S.sleeps[id], t);
+  const box = el('span', `member-sleep sleep-${sleep.state}`);
+  box.setAttribute('role', 'img');
+  box.setAttribute('aria-label', t('sleep.aria', { name: nameOf(id), state: sleep.label }));
+  const icon = el('span', 'sleep-icon', '<svg viewBox="0 0 20 20"><path d="M15.8 12.8A7 7 0 0 1 7.2 4.2a7 7 0 1 0 8.6 8.6Z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>');
+  icon.setAttribute('aria-hidden', 'true');
+  box.append(icon, el('span', 'sleep-label', esc(sleep.label)));
+  return box;
+}
+
+function sleepStates(data) {
+  return Object.fromEntries(AI_IDS.map((id) => [id, { state: sleepView(data?.[id], t).state }]));
+}
+
+function onSleeps(data) {
+  S.sleeps = data;
+  renderMembers();
+}
+
+const USAGE_VISIBLE = false;
 
 const LEVEL_LABEL = { warn: t('level.warn'), crit: t('level.crit') };
 const level = (remaining) => (remaining < 10 ? 'crit' : remaining < 30 ? 'warn' : 'ok');
@@ -1140,9 +1375,9 @@ function miniQuota(id) {
   const lv = level(w.remainingPct);
   const b = el('button', `m-quota lv-${lv}${u.ok === false ? ' stale' : ''}`);
   b.type = 'button';
-  b.title = `${u.windows.filter((x) => !x.minor).map((x) => `${x.label} ${t('usage.left', { pct: fmtPct(x.remainingPct) })}`).join(' · ')}\n${t('usage.clickHint')}`;
+  b.title = `${u.windows.filter((x) => !x.minor).map((x) => `${quotaLabel(x, t)} ${t('usage.left', { pct: fmtPct(x.remainingPct) })}`).join(' · ')}\n${t('usage.clickHint')}`;
   b.innerHTML = `<span class="track"><i style="width:${Math.max(2, w.remainingPct)}%"></i></span><span class="q"></span>`;
-  b.querySelector('.q').textContent = `${w.label} ${fmtPct(w.remainingPct)}`;
+  b.querySelector('.q').textContent = `${quotaLabel(w, t)} ${fmtPct(w.remainingPct)}`;
   b.onclick = () => {
     selectTab('usage');
     if (!wsVisible()) showWs(true);
@@ -1151,6 +1386,7 @@ function miniQuota(id) {
 }
 
 function renderUsage() {
+  if (!USAGE_VISIBLE) return;
   const box = $('#wsUsage');
   box.innerHTML = '';
   const head = el('div', 'usage-head');
@@ -1172,39 +1408,39 @@ function renderUsage() {
 
 function usageCard(id) {
   const u = S.usage[id] || {};
-  const m = S.members[id];
   const card = el('section', 'u-card');
   card.setAttribute('aria-label', t('usage.cardAria', { name: nameOf(id) }));
-  const h = el('div', 'u-head', `<img src="${avatar(id)}" alt=""><div class="u-title"><div class="n"></div><div class="s"></div></div>`);
+  const h = el('div', 'u-head', `${avatarMarkup(id)}<div class="u-title"><div class="n"></div><div class="s"></div></div>`);
   h.querySelector('.n').textContent = nameOf(id);
-  h.querySelector('.s').textContent = [u.plan, u.at ? t('usage.checkedAgo', { ago: ago(u.at) }) : null].filter(Boolean).join(' · ') || t('usage.notChecked');
+  h.querySelector('.s').textContent = [quotaPlan(u.plan, t), u.at ? t('usage.checkedAgo', { ago: ago(u.at) }) : null].filter(Boolean).join(' · ') || t('usage.notChecked');
   card.append(h);
   if (u.ok === false) {
     const e = el('div', 'u-err');
-    e.textContent = t('usage.failed', { error: u.error || t('usage.unknown') }) + (u.at ? ` · ${t('usage.lastValues')}` : '');
+    e.textContent = t('usage.failed') + (u.at ? ` · ${t('usage.lastValues')}` : '');
     card.append(e);
   }
   const ws = u.windows || [];
-  if (!ws.length && u.ok !== false) card.append(el('div', 'u-empty', esc(t('usage.loading'))));
+  if (!ws.length && u.ok !== false) card.append(el('div', 'u-empty', esc(quotaNote(u.note, t) || t('usage.loading'))));
   for (const w of ws) card.append(windowBlock(w));
   const foot = el('div', 'u-foot');
-  foot.textContent = t('usage.calls30', { n: u.calls30 ?? 0 }) + (m?.boostModel ? ` · ${t('usage.boostModel', { model: m.boostModel })}` : '');
+  foot.textContent = u.calls30 == null ? t('usage.callsUnknown') : t('usage.calls30', { n: u.calls30 });
   card.append(foot);
   return card;
 }
 
 function windowBlock(w) {
+  const label = quotaLabel(w, t);
   const lv = level(w.remainingPct);
   const b = el('div', `u-win lv-${lv}${w.minor ? ' minor' : ''}`);
   const top = el('div', 'u-row', `<span class="u-label"></span><span class="u-val">${t('usage.left', { pct: '<b></b>' })}</span>`);
-  top.querySelector('.u-label').textContent = `${w.label}${LEVEL_LABEL[lv] ? `  ${LEVEL_LABEL[lv]}` : ''}`;
+  top.querySelector('.u-label').textContent = `${label}${LEVEL_LABEL[lv] ? `  ${LEVEL_LABEL[lv]}` : ''}`;
   top.querySelector('b').textContent = fmtPct(w.remainingPct);
   const meter = el('div', 'u-meter', `<i style="width:${w.remainingPct}%"></i>`);
   meter.setAttribute('role', 'meter');
   meter.setAttribute('aria-valuemin', '0');
   meter.setAttribute('aria-valuemax', '100');
   meter.setAttribute('aria-valuenow', String(w.remainingPct));
-  meter.setAttribute('aria-label', t('usage.remainingAria', { label: w.label }));
+  meter.setAttribute('aria-label', t('usage.remainingAria', { label }));
   b.append(top, meter);
 
   const info = el('div', 'u-stats');
@@ -1327,8 +1563,12 @@ function onUsage(data) {
 // ---------------------------------------------------------------------------
 // lightbox + theme
 
-function lightbox(src, cap) {
-  $('#lbImg').src = src;
+function lightbox(src, cap, workspacePath) {
+  if (workspacePath) $('#lbImg').dataset.workspaceImage = workspacePath;
+  else delete $('#lbImg').dataset.workspaceImage;
+  $('#lbImg').dataset.workspaceOriginal = 'true';
+  $('#lbImg').alt = cap || workspacePath || '';
+  setSharedImage($('#lbImg'), src, { eager: true, feedback: true });
   $('#lbCap').textContent = cap || '';
   $('#lightbox').hidden = false;
 }
@@ -1356,42 +1596,139 @@ $('#themeBtn').onclick = () => {
 // ---------------------------------------------------------------------------
 // boot
 
-async function load() {
-  const st = await api('/api/state');
-  S.room = st.room;
-  S.members = {};
-  for (const m of st.members) S.members[m.id] = m;
-  S.messages = st.messages;
-  S.byId = new Map(st.messages.map((m) => [m.id, m]));
-  S.files = st.files;
-  S.usage = st.usage || {};
-  renderRoom();
-  renderMembers();
-  renderAllMessages();
-  renderWs();
-  toBottom();
+async function load({ recoverHistory = false } = {}) {
+  const version = ++stateLoad, epoch = sessionEpoch;
+  cancelHistory();
+  const previous = recoverHistory ? S.messages.slice() : [];
+  const received = pendingState = { messages: new Map() };
+  try {
+    const st = await api('/api/state');
+    if (version !== stateLoad || epoch !== sessionEpoch) return;
+    if (sessionView(st.session).authenticated) {
+      const settings = await api('/api/admin/settings');
+      if (version !== stateLoad || epoch !== sessionEpoch) return;
+      st.room = { ...st.room, ...settings };
+    }
+    // A reconnect never walks the gap. Only overlap proves continuity with the
+    // viewed segment; otherwise retain it separately until an explicit tail jump.
+    const tail = recentSnapshot(st.messages, received.messages);
+    const continuous = previous.length && overlaps(previous, tail);
+    const keepPast = recoverHistory && !S.stuck && previous.length && tail.length;
+    if (continuous) {
+      S.messages = uniqueMessages([...previous, ...tail]); S.tail = null;
+    } else if (keepPast) {
+      S.messages = previous; S.tail = tail;
+    } else {
+      S.messages = tail; S.tail = null;
+    }
+    for (const m of S.messages) {
+      const patch = received.messages.get(m.id);
+      if (patch) Object.assign(m, patch);
+    }
+    reindexMessages();
+    if (S.stuck && !S.tail) pruneLiveMessages();
+    history.more = S.messages.length > 0 && S.messages[0].id > 1;
+    history.error = false; history.armed = true;
+    // Events received while HTTP was in flight are newer than its snapshot.
+    S.needsSnapshot = false;
+    S.room = { ...st.room, ...received.room };
+    const members = received.members || st.members;
+    S.members = Object.fromEntries(members.map((m) => [m.id, m]));
+    setPersonaMembers(members);
+    S.files = received.files || st.files;
+    S.usage = {};
+    S.sleeps = received.sleeps || sleepStates(st.sleeps);
+    S.liar = Object.hasOwn(received, 'liar') ? received.liar : st.liar ?? null;
+    applySession(st.session);
+    liarPanel.update(S.liar);
+    renderRoom();
+    renderMembers();
+    renderAllMessages();
+    renderWs();
+    if (S.stuck && !S.tail) toBottom();
+    else renderJump();
+  } catch (error) {
+    // A failed snapshot cannot prove continuity. Do not append future SSE to
+    // the old segment; a visible latest/retry action requests another snapshot.
+    if (version === stateLoad && epoch === sessionEpoch) {
+      S.needsSnapshot = true; renderJump();
+    }
+    throw error;
+  } finally {
+    if (pendingState === received) pendingState = null;
+  }
 }
 
 function connect() {
-  const es = new EventSource('/events');
-  es.addEventListener('msg', (e) => addMessage(JSON.parse(e.data)));
-  es.addEventListener('msgupdate', (e) => updateMessage(JSON.parse(e.data)));
-  es.addEventListener('members', (e) => setMembers(JSON.parse(e.data)));
-  es.addEventListener('room', (e) => { S.room = JSON.parse(e.data); renderRoom(); });
-  es.addEventListener('ws', (e) => onFiles(JSON.parse(e.data)));
+  stream?.close();
+  const es = stream = new EventSource(appUrl('/events'));
+  let firstSession = true;
+  es.addEventListener('msg', (e) => {
+    const message = JSON.parse(e.data);
+    if (pendingState) rememberPending(pendingState.messages, message);
+    else addMessage(message);
+  });
+  es.addEventListener('msgupdate', (e) => {
+    const message = JSON.parse(e.data);
+    if (pendingState) rememberPending(pendingState.messages, message);
+    updateMessage(message);
+  });
+  es.addEventListener('members', (e) => {
+    const members = JSON.parse(e.data);
+    if (pendingState) pendingState.members = members;
+    setMembers(members);
+  });
+  es.addEventListener('room', (e) => {
+    const room = JSON.parse(e.data);
+    if (pendingState) pendingState.room = { ...pendingState.room, ...room };
+    S.room = { ...S.room, ...room }; renderRoom();
+  });
+  es.addEventListener('ws', (e) => {
+    const files = JSON.parse(e.data);
+    if (pendingState) pendingState.files = files;
+    onFiles(files);
+  });
   es.addEventListener('notes', (e) => onNote(JSON.parse(e.data)));
-  es.addEventListener('usage', (e) => onUsage(JSON.parse(e.data)));
-  es.onopen = () => { if (S.hadError) { S.hadError = false; load().catch(() => {}); } };
-  es.onerror = () => { S.hadError = true; };
+  es.addEventListener('sleeps', (e) => {
+    const sleeps = sleepStates(JSON.parse(e.data));
+    if (pendingState) pendingState.sleeps = sleeps;
+    onSleeps(sleeps);
+  });
+  es.addEventListener('liar', (e) => {
+    if (es !== stream) return;
+    let view;
+    try { view = JSON.parse(e.data); } catch { return; }
+    if (pendingState) pendingState.liar = view;
+    S.liar = view;
+    liarPanel.update(view);
+  });
+  es.addEventListener('session', (e) => {
+    const session = sessionView(JSON.parse(e.data));
+    const unchanged = session.role === S.session.role && session.authenticated === S.session.authenticated;
+    const initial = firstSession;
+    firstSession = false;
+    // A freshly connected stream announces the cookie session already loaded
+    // over HTTP. Do not erase an admin draft or refetch that identical state.
+    if (unchanged && (initial || session.role === 'admin')) return;
+    refreshSession();
+  });
+  es.onopen = () => {
+    firstSession = true;
+    if (S.hadError) { S.hadError = false; refreshSession(); }
+  };
+  es.onerror = () => { S.hadError = true; S.needsSnapshot = true; revokeSession(); liarPanel.update(null); renderJump(); };
 }
 
 try { if (localStorage.getItem('ws-closed') === '1' && wide()) app.classList.add('ws-closed'); } catch { /* private mode */ }
 if (!wide()) app.classList.add('ws-closed');
-connect();
-load().catch(() => toast(t('toast.noServer'), 5000));
+renderAccess();
+load().catch(() => toast(t('toast.noServer'), 5000)).finally(() => {
+  // Resolve the initial HTTP session before the stream's initial announcement.
+  connect();
+  if (location.pathname.replace(/\/+$/, '') === appUrl('/admin') && !isAdmin()) openLogin();
+});
 setInterval(() => {
   if (!wsVisible()) return;
   if (S.tab === 'files' && !S.openPath) renderFileList();
   if (S.tab === 'usage' && !document.activeElement?.closest?.('#wsUsage')) renderUsage();
 }, 30000);
-input.focus();

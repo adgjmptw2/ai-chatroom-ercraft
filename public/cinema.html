@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="25개의 자리와 빈 스크린. 잠시 머무르는 작은 영화관.">
+  <title>여백 극장 · 나만의 작은 영화관</title>
+  <link rel="stylesheet" href="./cinema.css">
+  <script src="./cinema.js" defer></script>
+</head>
+<body>
+  <header class="masthead">
+    <div class="brand"><span class="brand-mark" aria-hidden="true">◒</span><span>여백 극장<small>PRIVATE CINEMA</small></span></div>
+    <span class="hall-tag"><i aria-hidden="true"></i> 상영관 01 <span>·</span> 25석</span>
+  </header>
+
+  <main>
+    <div class="introduction">
+      <div><p class="eyebrow">나만의 작은 영화관</p><h1>상영 전의 고요</h1></div>
+      <p class="invitation">편안한 자리를 고르고,<br>잠시 어둠에 기대어 보세요.</p>
+    </div>
+
+    <section class="theatre" aria-label="빈 스크린과 5행 5열, 총 25석의 영화관">
+      <div class="ceiling" aria-hidden="true"></div>
+      <div class="back-wall" aria-hidden="true"></div>
+      <div class="wall wall--left" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="wall wall--right" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="screen-glow" aria-hidden="true"></div>
+      <div class="screen-frame" role="img" aria-label="영상이 재생되지 않는 빈 대형 스크린"><div class="screen"></div></div>
+      <div class="stage" aria-hidden="true"></div>
+      <div class="floor" aria-hidden="true"></div>
+      <div class="steps" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="seats" id="seats" role="grid" aria-label="영화관 좌석, 5행 5열" aria-rowcount="5" aria-colcount="5" aria-describedby="seat-help"></div>
+      <div class="foreground" aria-hidden="true"></div>
+      <span class="screen-caption" aria-hidden="true">아직, 이야기가 시작되기 전.</span>
+      <noscript><p class="no-script">좌석 선택과 조명 조절을 사용하려면 JavaScript를 켜주세요.</p></noscript>
+    </section>
+
+    <section class="console" aria-label="영화관 조절">
+      <div class="seat-readout">
+        <span class="ticket-icon" aria-hidden="true">◫</span>
+        <div><span class="control-label">나의 자리</span><p id="seat-status" role="status" aria-live="polite" aria-atomic="true">마음에 드는 자리를 골라보세요</p></div>
+        <button id="clear-seat" class="clear-button" type="button" disabled>선택 해제</button>
+      </div>
+      <div class="light-control">
+        <button id="lights-toggle" class="light-button" type="button" aria-pressed="false" aria-describedby="light-state" disabled><span class="lamp-icon" aria-hidden="true">☼</span><span>조명 낮추기</span><span class="switch" aria-hidden="true"><i></i></span></button>
+        <span id="light-state" class="light-state" role="status">따뜻한 실내 조명</span>
+      </div>
+    </section>
+    <footer><p id="seat-help"><span class="desktop-help">방향키로 이동 · Enter 또는 Space로 선택</span><span class="mobile-help">좌석을 눌러 선택하세요</span></p><span>5개 줄 · 한 줄에 5석</span></footer>
+  </main>
+</body>
+</html>

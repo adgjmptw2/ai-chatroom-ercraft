@@ -15,6 +15,7 @@ import readline from 'node:readline';
 import { spawn, spawnSync, execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { resolveBins, run, Adapters } from './lib/agents.mjs';
+import { hiveAvailable } from './lib/hive.mjs';
 import { LANGS, LANG_NAMES, LANG_DEFAULTS, resolveLang, setLang, pick } from './lib/i18n.mjs';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
@@ -693,8 +694,9 @@ async function main() {
   step(t.stepClis);
   say(dim(`  ${t.searching}`));
   let bins = resolveBins(readConfig().bins || {});
-  let list = await Promise.all(CLIS.map((c) => inspect(c, bins)));
+  let list = await Promise.all(CLIS.filter(c => c.id !== 'grok').map((c) => inspect(c, bins)));
   printTable(list);
+  say('  DeepSeek (Hive API): ' + (hiveAvailable(readConfig()) ? 'credential configured; actual connection is checked on use' : 'credential unavailable'));
 
   if (CHECK) {
     step(t.stepSettings);

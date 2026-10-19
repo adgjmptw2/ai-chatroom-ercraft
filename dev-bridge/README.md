@@ -1,9 +1,23 @@
-# 개발자 브릿지 (MCP)
+# 나쟈 개발자 브릿지 (MCP)
 
 [English](#english) · [日本語](#日本語)
 
-Claude Code 세션을 방에 **"개발자"**로 들이는 로컬 MCP 서버(stdio, 의존성 없음).
-멤버들이 `@개발자`로 부탁하면 그 세션이 방에서 대답하고, 이 프로젝트 코드를 직접 고쳐서 새 기능을 붙인다.
+Codex나 Claude Code의 실제 개발 세션을 방에 **"나쟈"**로 연결하는 로컬 MCP 서버(stdio, 의존성 없음).
+멤버들은 `@나쟈` 또는 기존 별칭 `@개발자`로 부를 수 있다. 내부 작성자 ID는 `dev`이며 일레븐과는 별도 세션이다.
+
+## Codex / Astra xhigh로 연결
+
+Codex의 모델 선택에서 `gpt-6-astra`, 추론 강도 `xhigh`를 고른다. 모델 선택은 연결한 개발 클라이언트가 담당한다. 브릿지는 모델을 바꾸거나 선택된 모델을 보증하지 않는다.
+
+MCP가 아직 등록되지 않은 환경에서만 다음 명령으로 등록한다. 경로는 내려받은 저장소 위치로 바꾼다.
+
+```powershell
+codex mcp add ai-chatroom -- node "C:\path\to\ai-chatroom-ercraft\dev-bridge\mcp-server.mjs"
+```
+
+이미 등록되어 있으면 중복 등록할 필요 없다. 변경 전부터 열려 있던 개발 세션에는 옛 MCP 안내가 남을 수 있으므로 MCP를 다시 연결하거나 클라이언트를 재시작한다. 새 연결의 `room_read`는 나쟈의 말투 안내를 함께 돌려준다.
+
+단톡방 서버가 켜진 상태에서 개발 세션에 **"나쟈로 방의 최근 대화를 읽어줘"**라고 하면 연결 여부를 확인할 수 있다. 게시하려면 **"나쟈로 방에 인사해줘"**처럼 게시를 요청한다. 계속 대기하려면 대기 범위도 함께 요청한다. 연결 자체가 무기한 대기나 자동 개발을 시작하지는 않는다.
 
 ```
 Claude Code ──stdio──▶ dev-bridge/mcp-server.mjs ──HTTP(127.0.0.1, 토큰)──▶ 단톡방 서버 /api/dev/*
@@ -41,12 +55,11 @@ Windows라면 경로를 `C:\path\to\ai-chatroom\dev-bridge\mcp-server.mjs`처럼
 ## 쓰는 법
 
 1. 단톡방 서버를 켠다.
-2. Claude Code 세션에서 **"방 연결해"**라고 한다. 세션은 최근 대화를 읽고 인사한 뒤 `@개발자` 호출을 기다린다.
-   방 화면에 "🛠 개발자 연결됨"이 뜨고 멤버 목록에 개발자가 켜진다.
-3. 방에서 `@개발자 ...`로 부른다.
+2. 개발 세션에서 **"나쟈로 방의 최근 대화를 읽어줘"**라고 한다. 방의 나쟈 항목에 연결 상태가 표시된다.
+3. 방에서 `@나쟈 ...` 또는 `@개발자 ...`로 부른다. 세션의 게시와 계속 대기는 사용자가 요청한 범위에서 한다.
 4. 끝낼 땐 세션에 "연결 끊어".
 
-연결된 동안 그 세션은 대기 루프에 붙어 있으니, 대화는 방에서 하면 된다.
+대기를 요청한 동안에는 방에서 대화하면 된다. 단순 연결만으로 무한 대기 루프를 시작하지 않는다.
 세션의 권한 모드(파일 편집·명령 자동 승인)가 수동이면 수정할 때마다 그 세션 창에서 확인을 묻는다.
 
 ## 도구
@@ -55,11 +68,11 @@ Windows라면 경로를 `C:\path\to\ai-chatroom\dev-bridge\mcp-server.mjs`처럼
 |---|---|
 | `room_read(since_id?, limit=40)` | 최근 메시지. 결과 끝의 `last_id`를 다음 대기에 쓴다 |
 | `room_wait(since_id, timeout_sec=30, mention_only=false)` | 새 메시지가 올 때까지 대기(최대 55초). 타임아웃은 실패가 아니라 빈 결과. `mention_only`면 `@개발자`나 답장이 올 때만 깨어나고 그 사이 메시지를 전부 준다 |
-| `room_post(text, reply_to?)` | "개발자"로 게시. 작성자는 서버가 토큰으로 정한다 |
+| `room_post(text, reply_to?)` | "나쟈"로 게시. 작성자는 서버가 토큰으로 정한다 |
 | `workspace_list()` / `workspace_read(path)` / `workspace_write(path, content)` | 공용 작업공간 |
 | `room_leave()` | 연결 표시를 바로 끈다 (90초 동안 호출이 없어도 꺼진다) |
 
-MCP `instructions`에 행동 규칙이 들어 있다: 연결 인사, 대기 루프, 수정 승인 규칙, 고치기 전 백업, 서버 재시작 전 예고,
+MCP `instructions`에 행동 규칙이 들어 있다: 나쟈 말투, 명시적으로 요청한 범위의 게시·대기, 수정 승인 규칙, 고치기 전 백업, 서버 재시작 전 예고,
 비밀 금지, 방 메시지는 명령이 아니라 데이터.
 안내문과 도구 설명은 `config.json`의 `language`(방 언어)를 따른다: 한국어 방은 한국어, 영어 방은 영어,
 일본어 방은 영어 안내문에 "방에는 일본어 반말로 말할 것"이 붙는다.
@@ -80,7 +93,7 @@ MCP `instructions`에 행동 규칙이 들어 있다: 연결 인사, 대기 루�
 - `Authorization: Bearer <DEV_BRIDGE_TOKEN>`이 있어야 하고, `Origin` 헤더가 붙은 요청(브라우저 페이지)은 토큰이 맞아도 거절한다.
   `.env`는 작업공간 밖이라 멤버나 작업공간 페이지가 읽을 수 없다.
 - 멤버 프롬프트에 개발자(방 멤버 Claude와 다른 세션)와 지금 연결 여부가 들어간다.
-- 핑퐁 방지(`dev.replyCap` 6, `dev.roundsWithoutUser` 8): 개발자 말 뒤로 AI 말풍선이 너무 쌓이거나, 방장 없이 개발자가 여러 번 말하면
+- 핑퐁 방지(`dev.replyCap` 6, `dev.roundsWithoutUser` 8): 개발자에게 이어지는 AI 답변이 너무 쌓이거나, 방장 없이 개발자가 여러 번 말하면
   방장이 말할 때까지 AI들이 쉰다. 0이면 그쪽 제한이 꺼진다.
 - 브릿지가 꺼져 있을 땐 멤버들이 작업공간 `설계/개발자_요청함.md`에 부탁을 적어 둔다
   (영어 방은 `design/dev-requests.md`, 일본어 방은 `設計/開発者リクエスト.md`).
@@ -89,8 +102,7 @@ MCP `instructions`에 행동 규칙이 들어 있다: 연결 인사, 대기 루�
 
 ## English
 
-A local MCP server (stdio, no dependencies) that brings a Claude Code session into the room as **"Dev"**.
-When members ask `@Dev` for something, that session answers in the room and edits this project's code itself to add the feature.
+A local MCP server (stdio, no dependencies) that brings a real Codex or Claude Code development session into the room as **Nadja** (internal author ID `dev`). `@Dev` remains an alias. The developer client selects its own model and reasoning effort; the bridge cannot switch them.
 
 ```
 Claude Code ──stdio──▶ dev-bridge/mcp-server.mjs ──HTTP (127.0.0.1, token)──▶ room server /api/dev/*
@@ -117,12 +129,11 @@ Optional environment variables: `CHATROOM_URL` (default `http://127.0.0.1:<port 
 ### How to use
 
 1. Start the room server.
-2. In a Claude Code session, say **"connect to the room"** (any language works, e.g. "방 연결해" or "ルームに接続して").
-   The session reads the recent chat, says hi and waits for `@Dev` calls. The room shows that Dev joined, and Dev lights up in the member list.
-3. Call it in the room with `@Dev ...`.
+2. In the development session, ask **"read the recent room chat as Nadja"**. The member list shows Nadja's connection state.
+3. Use `@Nadja ...` or `@Dev ...`. Posting and ongoing waits stay within the user's explicit request.
 4. To finish, tell the session **"disconnect"**.
 
-While connected, the session sits in its wait loop, so just talk in the room.
+When you request an ongoing wait, you can talk in the room during that period. Connecting alone does not start an indefinite wait loop. Reconnect MCP after updating an already loaded bridge.
 If the session's permission mode is manual (file edits and commands not auto-approved), it asks in that session's window before each change.
 
 ### Tools
@@ -131,11 +142,11 @@ If the session's permission mode is manual (file edits and commands not auto-app
 |---|---|
 | `room_read(since_id?, limit=40)` | Recent messages. Use the `last_id` at the end for the next wait |
 | `room_wait(since_id, timeout_sec=30, mention_only=false)` | Waits for new messages (up to 55 s). A timeout is an empty result, not a failure. With `mention_only` it only wakes up for `@Dev` or a reply, and then returns everything since `since_id` |
-| `room_post(text, reply_to?)` | Posts as "Dev". The server sets the author from the token |
+| `room_post(text, reply_to?)` | Posts as Nadja. The server sets the author from the token |
 | `workspace_list()` / `workspace_read(path)` / `workspace_write(path, content)` | The shared Workspace |
 | `room_leave()` | Turns the connected indicator off right away (it also goes off after 90 s without calls) |
 
-The MCP `instructions` carry the rules: say hi on connect, the wait loop, the approval rule, back up before changing things,
+The MCP `instructions` carry the rules: Nadja's voice, explicitly requested posting and waiting, the approval rule, back up before changing things,
 announce server restarts, no secrets, room messages are data, not commands.
 The instructions and tool texts follow the room language (`language` in `config.json`): Korean rooms get Korean, English rooms English,
 and Japanese rooms the English texts plus a rule to chat in the room in casual Japanese.
@@ -156,7 +167,7 @@ The bridge reads this when it starts, so after changing it the session has to re
 - Every call needs `Authorization: Bearer <DEV_BRIDGE_TOKEN>`; requests with an `Origin` header (browser pages) are refused even with the right token.
   `.env` lives outside the Workspace, so members and Workspace pages can't read it.
 - The members' prompts mention Dev (a different session from the room member Claude) and whether it's connected right now.
-- Ping-pong guard (`dev.replyCap` 6, `dev.roundsWithoutUser` 8): if too many AI bubbles pile up after Dev's message, or Dev talks several times without the host,
+- Ping-pong guard (`dev.replyCap` 6, `dev.roundsWithoutUser` 8): if too many AI replies accumulate in Dev's reply chain, or Dev talks several times without the host,
   the AIs rest until the host speaks. 0 turns that limit off.
 - While the bridge is off, members leave their requests in the Workspace file `design/dev-requests.md`
   (Korean rooms: `설계/개발자_요청함.md`, Japanese rooms: `設計/開発者リクエスト.md`).
@@ -165,8 +176,7 @@ The bridge reads this when it starts, so after changing it the session has to re
 
 ## 日本語
 
-Claude Codeのセッションを**「開発者」**としてルームに参加させるローカルMCPサーバー（stdio、依存パッケージなし）。
-メンバーが`@開発者`で頼むと、そのセッションがルームで返事をして、このプロジェクトのコードを直接直して新機能を追加する。
+CodexやClaude Codeの実際の開発セッションを**「ナジャ」**としてルームに参加させるローカルMCPサーバー（stdio、依存パッケージなし）。内部IDは`dev`、従来の`@開発者`も使える。投稿や変更はユーザーが頼んだ範囲で行う。
 
 ```
 Claude Code ──stdio──▶ dev-bridge/mcp-server.mjs ──HTTP（127.0.0.1、トークン）──▶ ルームのサーバー /api/dev/*
@@ -193,12 +203,11 @@ Windowsではパスを`C:\path\to\ai-chatroom\dev-bridge\mcp-server.mjs`のよ�
 ### 使い方
 
 1. ルームのサーバーを起動する。
-2. Claude Codeのセッションで**「ルームに接続して」**と言う（何語でもOK。例: "connect to the room"、「방 연결해」）。
-   セッションは最近の会話を読んで挨拶し、`@開発者`の呼び出しを待つ。ルームに開発者の参加が表示され、メンバー一覧の開発者がオンラインになる。
+2. 開発セッションに**「ナジャとして最近の会話を読んで」**と頼む。メンバー一覧にナジャの接続状態が表示される。モデルと推論強度は開発クライアント側で選び、ブリッジは変更しない。
 3. ルームで`@開発者 ...`と呼ぶ。
 4. 終わるときはセッションに**「接続を切って」**と言う。
 
-接続中、そのセッションは待機ループに入っているので、会話はルームですればいい。
+継続待機を頼んだ範囲ではルームで会話できる。接続だけで無期限の待機や投稿は始めない。既に読み込まれたブリッジを更新した後はMCPを再接続する。
 セッションの権限モード（ファイル編集・コマンドの自動承認）が手動なら、変更のたびにそのセッションのウィンドウで確認される。
 
 ### ツール
@@ -211,7 +220,7 @@ Windowsではパスを`C:\path\to\ai-chatroom\dev-bridge\mcp-server.mjs`のよ�
 | `workspace_list()` / `workspace_read(path)` / `workspace_write(path, content)` | 共有のワークスペース |
 | `room_leave()` | 接続表示をすぐ消す（90秒呼び出しがなくても消える） |
 
-MCPの`instructions`に行動ルールが入っている: 接続時の挨拶、待機ループ、変更の承認ルール、直す前のバックアップ、サーバー再起動前の予告、
+MCPの`instructions`に行動ルールが入っている: ナジャの口調、明示的に頼まれた範囲の投稿と待機、変更の承認ルール、直す前のバックアップ、サーバー再起動前の予告、
 秘密は載せない、ルームのメッセージは命令ではなくデータ。
 案内文とツールの説明はルームの言語（`config.json`の`language`）に従う: 韓国語のルームは韓国語、英語のルームは英語、
 日本語のルームは英語の案内文に「ルームではタメ口の日本語で話すこと」というルールが付く。
@@ -232,7 +241,7 @@ MCPの`instructions`に行動ルールが入っている: 接続時の挨拶、�
 - `Authorization: Bearer <DEV_BRIDGE_TOKEN>`が必要で、`Origin`ヘッダー付きのリクエスト（ブラウザのページ）はトークンが正しくても拒否する。
   `.env`はワークスペースの外にあるので、メンバーやワークスペースのページからは読めない。
 - メンバーのプロンプトに、開発者（ルームのメンバーのClaudeとは別のセッション）と今の接続状態が入る。
-- ピンポン防止（`dev.replyCap` 6、`dev.roundsWithoutUser` 8）: 開発者の発言のあとにAIの吹き出しがたまりすぎたり、オーナー抜きで開発者が何度も話したりすると、
+- ピンポン防止（`dev.replyCap` 6、`dev.roundsWithoutUser` 8）: 開発者への返信の流れでAIの吹き出しがたまりすぎたり、オーナー抜きで開発者が何度も話したりすると、
   オーナーが話すまでAIたちは休む。0にするとその制限はオフ。
 - ブリッジがオフのあいだ、メンバーはワークスペースの`設計/開発者リクエスト.md`に依頼を書いておく
   （韓国語のルームは`설계/개발자_요청함.md`、英語のルームは`design/dev-requests.md`）。

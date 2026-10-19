@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title data-i18n="world.title">건축 월드</title>
+<title data-i18n="world.title">생활 월드</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='10' y='26' width='20' height='20' fill='%238b5a2b'/%3E%3Crect x='34' y='26' width='20' height='20' fill='%239a9da3'/%3E%3Crect x='22' y='6' width='20' height='20' fill='%235fa04e'/%3E%3C/svg%3E">
+<link rel="icon" type="image/png" href="/ercraft-symbol.png">
 <style>
 :root {
   --panel: rgba(255, 255, 255, .88); --line: rgba(20, 24, 36, .12); --text: #1b1f2a; --muted: #5d6475;
@@ -36,15 +36,44 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--sky); 
   border-radius: 9px; padding: 4px 10px; text-decoration: none; cursor: pointer; }
 .top button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .who { display: flex; gap: 6px; flex-wrap: wrap; }
+#cameras[hidden], #cutaway[hidden] { display: none; }
 .who button { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 3px; border-radius: 20px; }
-.who img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.who .persona-avatar { width: 20px; height: 20px; border-radius: 50%; }
 .chat { left: 12px; bottom: 12px; width: min(380px, calc(100vw - 24px)); max-height: 34vh; overflow: hidden; padding: 8px 12px; font-size: 13px; }
 .chat .l { margin: 3px 0; overflow-wrap: anywhere; }
 .chat .n { font-weight: 650; margin-right: 5px; }
 .chat .sys { color: var(--muted); font-size: 12px; }
 .empty { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 12px 16px; font-size: 13.5px; color: var(--muted); text-align: center; }
 .help { right: 12px; bottom: 12px; padding: 6px 10px; font-size: 12px; color: var(--muted); }
+.top { background: rgba(255, 253, 248, .94); border-color: rgba(101, 126, 110, .17); box-shadow: 0 4px 24px #304d4610; }
+:root[data-theme="dark"] .top { background: rgba(28, 39, 46, .94); }
+.top h1 { letter-spacing: -.4px; }
+#cameras { padding: 3px; background: #74998c12; border-radius: 20px; }
+#cameras button { border: 0; padding: 5px 11px; }
+.chat { background: rgba(255, 253, 248, .92); border-color: #879c8e26; }
+:root[data-theme="dark"] .chat { background: rgba(28, 39, 46, .92); }
 @media (max-width: 640px) { .help { display: none; } .chat { max-height: 26vh; } }
+.living-panel { right: 12px; top: var(--world-toolbar-bottom, 160px); width: min(286px, calc(100vw - 24px));
+  max-height: calc(100dvh - var(--world-toolbar-bottom, 160px) - 52px); overflow: auto; overscroll-behavior: contain; font-size: 12px; }
+.living-panel summary { cursor: pointer; padding: 10px 12px; font-size: 13px; font-weight: 700; }
+.living-panel summary span { float: right; color: var(--muted); font-size: 11px; font-weight: 400; }
+#living-view { padding: 0 12px 10px; overflow-wrap: anywhere; }
+#living-view section + section { margin-top: 10px; padding-top: 9px; border-top: 1px solid var(--line); }
+#living-view h2 { margin: 0 0 5px; font-size: 12px; }
+#living-view p { margin: 4px 0; }
+.living-notice, .living-muted { color: var(--muted); }
+.living-notice { padding-bottom: 6px; font-size: 11px; }
+.living-meal-title, .living-game-status { font-weight: 650; }
+.living-board { width: 126px; height: 126px; table-layout: fixed; border-collapse: collapse; margin: 8px auto 0; }
+.living-board td { width: 42px; height: 42px; padding: 0; text-align: center; border: 1px solid var(--line); font-size: 22px; font-weight: 750; }
+.living-board .mark-x { color: #28796a; } .living-board .mark-o { color: #ba536b; }
+.living-board .winning { background: #dbb24b33; box-shadow: inset 0 0 0 1px #bd942b77; }
+.living-events ol { padding-left: 16px; margin: 4px 0 0; color: var(--muted); }
+.living-events li + li { margin-top: 4px; }
+@media (max-width: 760px) {
+  .help { display: none; } .chat { max-height: 26vh; }
+  .living-panel { max-height: calc(100dvh - var(--world-toolbar-bottom, 160px) - 26vh - 28px); }
+}
 /* screenshot mode (server's headless camera, lib/worldshot.mjs): no HUD */
 body.shot .hud { display: none !important; }
 </style>
@@ -58,51 +87,67 @@ body.shot .hud { display: none !important; }
 <body>
 <div id="scene"></div>
 <div class="hud top">
-  <h1>🧱 <span data-i18n="world.title">건축 월드</span></h1><span class="sub" id="count"></span>
+  <h1>🏡 <span id="world-title" data-i18n="world.title">생활 월드</span></h1><span class="sub" id="count"></span>
+  <div id="cameras" class="who" hidden></div>
   <div class="who" id="who"></div>
   <span class="sp"></span>
   <button type="button" id="night" title="밤이 되면 램프가 더 잘 보여" data-i18n-title="world.nightTitle" data-i18n="world.night">🌙 밤</button>
   <button type="button" id="rotate" title="천천히 돌려보기" data-i18n-title="world.rotateTitle" data-i18n="world.rotate">자동 회전</button>
   <button type="button" id="home" title="처음 시점으로" data-i18n-title="world.homeTitle" data-i18n="world.home">시점 초기화</button>
+  <button type="button" id="cutaway" hidden></button>
   <a href="/" data-i18n="world.back">방으로</a>
 </div>
 <div class="hud chat" id="chat" hidden></div>
+<details class="hud living-panel" id="living-panel" open>
+  <summary>우리 집 생활 <span>관전</span></summary>
+  <div id="living-view"></div>
+</details>
 <div class="hud help" data-i18n="world.help">드래그: 돌리기 · 휠: 확대 · 우클릭 드래그: 이동 · 멤버 누르면 따라가기</div>
 <div class="hud empty" id="empty" hidden data-i18n="world.empty">아직 아무것도 안 지었어. 방에서 멤버들한테 뭐 지어달라고 해봐.</div>
 
 <!-- Labels first, so they are translated while three.js is still loading from the CDN. -->
 <script type="module">
-import { applyI18n } from '/i18n.js';
+import { applyI18n } from './i18n.js';
 applyI18n();
 </script>
 <script type="module">
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
-import { t, lang, locale } from '/i18n.js';
+import { t, lang, locale } from './i18n.js';
+import { setPersonaMembers, memberName, memberColor, memberAccentColor, avatarSpec, createAvatar, loadAvatarImage, drawAvatar } from './persona-client.js';
+import { drawMaterial, materialSize, isFurniture, furnitureBatch, furnitureGeometry, FACING_TURN } from './world-materials.js';
+import { HOME_CAMERAS, homeVisible, buriedCube, NEIGHBORS, safeRoute } from './world-home.js';
+import { createDiorama } from './world-diorama.js';
+import { createLivingView } from './living-view.js';
+import { appUrl } from './base-path.js';
 
-const MEMBERS = {
-  claude: { name: 'Claude', color: '#d97a3a' }, gpt: { name: 'ChatGPT', color: '#2f7cf6' },
-  grok: { name: 'Grok', color: '#b8912a' }, gemini: { name: 'Gemini', color: '#5b6cf0' },
-};
+let MEMBERS = {};
 let USER_NAME = ''; // the owner's name from /api/state
-const NAME_OF = (id) => MEMBERS[id]?.name || (id === 'user' ? USER_NAME || t('user.default') : id === 'dev' ? t('dev.name') : id);
+const NAME_OF = (id) => id === 'user' ? USER_NAME || t('user.default') : memberName(id);
 // Canvas text (signs, name tags, speech bubbles): Japanese fonts ahead of the system font in a Japanese room.
 const FONT_STACK = lang === 'ja'
   ? '"Pretendard Variable", Pretendard, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI", Meiryo, "Noto Sans JP", system-ui, sans-serif'
   : '"Pretendard Variable", Pretendard, system-ui, sans-serif';
 const $ = (s) => document.querySelector(s);
+let pendingFrame = null, needsRender = true, lastFrameAt = 0, lastTickAt = 0, renderedFrames = 0;
+let HOME = null, cutaway = true, cameraPreset = 'overview', loadedOnce = false;
+let diorama = null, dioramaDirty = true;
+const frameTimes = [];
 
 // ---------- scene ----------
 const box = $('#scene');
 const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 1.25));
 box.append(renderer.domElement);
 const scene = new THREE.Scene();
+const livingView = createLivingView({ THREE, scene, root: $('#living-view'), invalidate, memberName: NAME_OF });
+if (matchMedia('(max-width: 760px)').matches) $('#living-panel').open = false;
+// Track toolbar wrapping without introducing a frame loop or covering chat controls.
+const livingLayout = new ResizeObserver(() => {
+  document.documentElement.style.setProperty('--world-toolbar-bottom', `${Math.ceil($('.top').getBoundingClientRect().bottom) + 8}px`);
+});
+livingLayout.observe($('.top'));
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
@@ -114,18 +159,14 @@ const sun = new THREE.DirectionalLight(0xffffff, 0.9);
 sun.position.set(30, 60, 20);
 scene.add(sun);
 
-// Bloom: only what is brighter than the threshold glows, i.e. the lamp blocks (their
-// shader outputs HDR values well above anything daylight can reach on a white block).
-const composer = new EffectComposer(renderer);
-composer.addPass(new RenderPass(scene, camera));
-const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.45, 0.35, 1.5);
-composer.addPass(bloom);
-composer.addPass(new OutputPass());
+// A single render pass, shared materials and no realtime shadow maps.
+controls.addEventListener('change', invalidate);
+controls.addEventListener('start', invalidate);
 
 // ---------- lamp light (GLSL) ----------
 // Every lit material gets the nearest lamps as point lights through onBeforeCompile:
 // warm light with a smooth falloff, no shadows (it goes through walls, like a glow).
-const MAX_LAMPS = 64;
+const MAX_LAMPS = 12;
 const LAMP = {
   uLamps: { value: Array.from({ length: MAX_LAMPS }, () => new THREE.Vector3()) },
   uLampCount: { value: 0 },
@@ -243,20 +284,23 @@ let night = false;
 try { night = localStorage.getItem('world-night') === '1'; } catch { /* no storage */ }
 if (Q.has('night')) night = Q.get('night') === '1';
 function applyNight() {
-  // Daylight stays low enough that a white block (≈1.4) never crosses the bloom threshold (1.5).
-  hemi.intensity = night ? 0.1 : 0.9;
-  hemi.color.set(night ? 0x8fa4d8 : 0xffffff);
-  sun.intensity = night ? 0.06 : 0.8;
-  scene.background = new THREE.Color(night ? 0x0b1220 : 0xbfe3f7);
+  const livingHome = HOME?.id === 'mulgyeol-maru';
+  hemi.intensity = night ? (livingHome ? 0.85 : 0.1) : livingHome ? 1.5 : 1.15;
+  hemi.color.set(night ? 0xa5b9e0 : 0xfff9ed);
+  hemi.groundColor.set(livingHome ? night ? 0x414b61 : 0xa9b2a0 : 0x6b7a5c);
+  sun.intensity = night ? (livingHome ? 0.4 : 0.06) : livingHome ? 1.65 : 1.0;
+  sun.position.set(livingHome ? -10 : 30, 60, livingHome ? 55 : 20);
+  sun.color.set(night ? 0xe5c6a2 : 0xfff2d8);
+  scene.background = new THREE.Color(night ? 0x192c3b : livingHome ? 0xdce8e4 : 0xbfe3f7);
+  diorama?.setNight?.(night);
   // Kept low on purpose: many lamps side by side (e.g. behind glass) stack up quickly.
   LAMP.uLampStrength.value = night ? 1.0 : 0.35;
   LAMP.uGlow.value = night ? 2.3 : 1.9;
-  bloom.strength = night ? 0.7 : 0.35;
-  bloom.radius = night ? 0.4 : 0.3;
   if (gridLines) gridLines.material.opacity = night ? 0.1 : 0.35; // unlit lines glare at night
-  document.documentElement.dataset.theme = night ? 'dark' : '';
+  document.documentElement.dataset.theme = night ? 'dark' : 'light';
   $('#night').classList.toggle('on', night);
   $('#night').textContent = t(night ? 'world.day' : 'world.night');
+  invalidate();
 }
 
 let SIZE = { x: 48, y: 32, z: 48 };
@@ -268,10 +312,53 @@ let ground = null;
 let gridLines = null;
 
 function homeView() {
+  if (HOME?.id === 'mulgyeol-maru') { selectCamera('overview'); return; }
   camera.position.set(SIZE.x * 0.5 + 34, 36, SIZE.z * 0.5 + 42);
   controls.target.set(SIZE.x / 2, 2, SIZE.z / 2);
   follow = null;
   controls.update();
+  invalidate();
+}
+
+const homeLabels = {
+  ko: { overview: '집 전체', living: '거실·주방', courtyard: '마당', album: '앨범 코너', inside: '실내 보기', outside: '지붕 보기' },
+  en: { overview: 'Home', living: 'Living · Kitchen', courtyard: 'Courtyard', album: 'Album nook', inside: 'Interior', outside: 'Roof' },
+  ja: { overview: '家全体', living: '居間・キッチン', courtyard: '中庭', album: 'アルバム', inside: '室内', outside: '屋根' },
+};
+function selectCamera(id) {
+  const view = HOME_CAMERAS[id];
+  if (!view) return;
+  cameraPreset = id; follow = null; freeCam = false; controls.autoRotate = false;
+  stopCameraInertia();
+  $('#rotate').classList.remove('on');
+  camera.near = 1; // retain depth precision for thin rugs at the mobile overview distance
+  camera.fov = view.fov; camera.updateProjectionMatrix();
+  camera.position.fromArray(view.position); controls.target.fromArray(view.target);
+  camera.position.sub(controls.target).multiplyScalar(Math.max(1,1.1/camera.aspect)).add(controls.target);
+  controls.update(); renderWhoState();
+  for (const button of $('#cameras').children) button.classList.toggle('on', button.dataset.camera === id);
+  if (id === 'album') refreshAlbum();
+  invalidate();
+}
+function renderHomeControls() {
+  const enabled = HOME?.id === 'mulgyeol-maru';
+  const labels = homeLabels[lang] || homeLabels.ko;
+  $('#cameras').hidden = !enabled; $('#cutaway').hidden = !enabled;
+  $('#world-title').textContent = enabled ? HOME.title || '물결마루' : t('world.title');
+  $('#cameras').replaceChildren();
+  if (!enabled) return;
+  for (const id of Object.keys(HOME_CAMERAS)) {
+    const button = document.createElement('button'); button.type = 'button';
+    button.textContent = labels[id]; button.dataset.camera = id;
+    button.classList.toggle('on', cameraPreset === id); button.onclick = () => selectCamera(id);
+    $('#cameras').append(button);
+  }
+  $('#cutaway').textContent = cutaway ? labels.outside : labels.inside;
+  $('#cutaway').onclick = () => {
+    cutaway = !cutaway;
+    rebuild(new Set([...blocks.values(), ...meshes.keys()])); renderSigns(); renderHomeControls();
+    invalidate();
+  };
 }
 
 // Camera from the screenshot parameters.
@@ -315,9 +402,18 @@ function shotView() {
 }
 
 function buildGround() {
-  if (ground) scene.remove(ground);
+  if (ground) {
+    scene.remove(ground);
+    for (const part of ground.children) { part.geometry.dispose(); part.material.dispose(); }
+  }
+  ground = null; gridLines = null;
+  if (HOME?.id === 'mulgyeol-maru') return;
   ground = new THREE.Group();
-  const plane = new THREE.Mesh(new THREE.BoxGeometry(SIZE.x, 1, SIZE.z), lampLit(new THREE.MeshLambertMaterial({ color: 0x5fa04e })));
+  const g = new THREE.BoxGeometry(SIZE.x, 1, SIZE.z);
+  // Repeat through UVs so the shared grass texture needs no cloned texture.
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * SIZE.x, uv.getY(i) * SIZE.z);
+  const plane = new THREE.Mesh(g, lampLit(new THREE.MeshLambertMaterial({ map: texOf('grass') })));
   plane.position.set(SIZE.x / 2, -0.5, SIZE.z / 2);
   ground.add(plane);
   const grid = new THREE.GridHelper(SIZE.x, SIZE.x, 0x3d7a33, 0x4f8f45);
@@ -325,12 +421,13 @@ function buildGround() {
   grid.material.transparent = true;
   grid.material.opacity = night ? 0.1 : 0.35;
   gridLines = grid;
+  grid.visible = HOME?.id !== 'mulgyeol-maru';
   ground.add(grid);
   scene.add(ground);
 }
 
 // ---------- block looks ----------
-// Stored values: "name", "name/slab", "name/stair/<n|e|s|w>", "door" or "door/<x|z>".
+// Stored values: "name", "name/slab", "name/<stair|furniture>/<n|e|s|w>", "door/<x|z>".
 const parseBlock = (v) => {
   const [type, shape, facing] = String(v).split('/');
   if (type === 'door') return { type, shape: 'door', facing: shape || '' };
@@ -353,57 +450,42 @@ const texCache = new Map();
 function texOf(name) {
   if (texCache.has(name)) return texCache.get(name);
   let tex = null;
-  if (name === 'bookshelf') {
-    tex = canvasTexture(16, 16, (g) => {
-      g.fillStyle = '#b8894f'; g.fillRect(0, 0, 16, 16);          // planks frame
-      g.fillStyle = '#6e4a26'; g.fillRect(0, 7, 16, 2); g.fillRect(0, 15, 16, 1); // shelves
-      const spines = ['#a33b32', '#2f5d8a', '#3d7a3d', '#c9a23a', '#6b3f8a', '#b35a2a', '#2c6f6f'];
-      let i = 0;
-      for (const top of [1, 9]) for (let x = 1; x < 15; x += 2) {
-        const h = 5 + ((x * 7 + top) % 2);
-        g.fillStyle = spines[i++ % spines.length];
-        g.fillRect(x, top + (6 - h), 2, h);
-      }
-    });
-  } else if (name === 'door') {
-    tex = canvasTexture(16, 16, (g) => {
-      g.fillStyle = '#9a6a3a'; g.fillRect(0, 0, 16, 16);
-      g.fillStyle = '#7a4f28';
-      g.fillRect(0, 0, 16, 1); g.fillRect(0, 15, 16, 1); g.fillRect(0, 0, 1, 16); g.fillRect(15, 0, 1, 16);
-      g.fillRect(2, 2, 12, 1); g.fillRect(2, 8, 12, 1); g.fillRect(2, 13, 12, 1);
-      g.fillRect(7, 2, 1, 12);
-      g.fillStyle = '#e0c060'; g.fillRect(12, 7, 2, 2); // knob
-    });
-  } else if (CUSTOM[name]) {
+  if (CUSTOM[name]) {
     const c = CUSTOM[name];
     const data = new Uint8Array(8 * 8 * 4);
     c.pixels.forEach((row, ry) => [...row].forEach((ch, x) => {
       const i = ((7 - ry) * 8 + x) * 4; // DataTexture rows go bottom-up
       if (ch === '.') { data[i + 3] = 0; return; }
-      const col = new THREE.Color(c.colors[ch] || '#ff00ff');
-      data[i] = Math.round(col.r * 255); data[i + 1] = Math.round(col.g * 255); data[i + 2] = Math.round(col.b * 255); data[i + 3] = 255;
+      const hex = c.colors[ch] || '#ff00ff';
+      data[i] = parseInt(hex.slice(1, 3), 16); data[i + 1] = parseInt(hex.slice(3, 5), 16); data[i + 2] = parseInt(hex.slice(5, 7), 16); data[i + 3] = 255;
     }));
     tex = new THREE.DataTexture(data, 8, 8);
     tex.colorSpace = THREE.SRGBColorSpace;
     tex.magFilter = THREE.NearestFilter;
-    tex.minFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
     tex.needsUpdate = true;
+  } else if (name !== 'lamp') {
+    const size = materialSize(name);
+    tex = canvasTexture(size, size, (g) => drawMaterial(g, size, name, PALETTE[name] || (name === 'grass' ? '#5fa04e' : '#ff00ff')));
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+    // Pixel detail nearby; mipmaps avoid distant shimmer, with no extra draws.
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
   }
   texCache.set(name, tex);
   return tex;
 }
 
+const matCache = new Map();
 function material(type) {
-  const color = new THREE.Color(PALETTE[type] || '#ff00ff');
+  if (!matCache.has(type)) matCache.set(type, makeMaterial(type));
+  return matCache.get(type);
+}
+function makeMaterial(type) {
   if (type === 'lamp') return lampMaterial();
-  if (type === 'glass') return lampLit(new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false }));
-  if (type === 'water') return lampLit(new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.7 }));
-  if (type === 'bookshelf') {
-    const side = lampLit(new THREE.MeshLambertMaterial({ map: texOf('bookshelf') }));
-    const top = lampLit(new THREE.MeshLambertMaterial({ color: new THREE.Color('#c8a063') }));
-    return [side, side, top, top, side, side]; // +x -x +y -y +z -z
-  }
-  if (type === 'door') return lampLit(new THREE.MeshLambertMaterial({ map: texOf('door') }));
+  if (type === 'glass') return lampLit(new THREE.MeshLambertMaterial({ map: texOf(type), vertexColors: true, transparent: true, opacity: 0.45, depthWrite: false }));
+  if (type === 'water') return lampLit(new THREE.MeshLambertMaterial({ map: texOf(type), vertexColors: true, transparent: true, opacity: 0.7 }));
   const c = CUSTOM[type];
   if (c) {
     const map = texOf(type);
@@ -416,31 +498,51 @@ function material(type) {
       const mean = cols.reduce((a, k) => a + 0.299 * k.r + 0.587 * k.g + 0.114 * k.b, 0) / Math.max(1, cols.length);
       const maxCh = Math.max(...cols.map((k) => Math.max(k.r, k.g, k.b)), 0.05);
       const k = Math.max(1.6, Math.min(4 / maxCh, 2.2 / Math.max(mean, 0.05)));
-      return new THREE.MeshBasicMaterial({ map, color: new THREE.Color(k, k, k), transparent: c.clear, alphaTest: c.clear ? 0.5 : 0 });
+      return new THREE.MeshBasicMaterial({ map, color: new THREE.Color(k, k, k), vertexColors: true, transparent: c.clear, alphaTest: c.clear ? 0.5 : 0 });
     }
-    return lampLit(new THREE.MeshLambertMaterial({ map, transparent: c.clear, alphaTest: c.clear ? 0.5 : 0, side: c.clear ? THREE.DoubleSide : THREE.FrontSide }));
+    return lampLit(new THREE.MeshLambertMaterial({ map, vertexColors: true, transparent: c.clear, alphaTest: c.clear ? 0.5 : 0, side: c.clear ? THREE.DoubleSide : THREE.FrontSide }));
   }
-  return lampLit(new THREE.MeshLambertMaterial({ color }));
+  return lampLit(new THREE.MeshLambertMaterial({ map: texOf(type), vertexColors: true }));
+}
+
+function invalidateMaterials(names) {
+  for (const n of names) {
+    matCache.get(n)?.dispose(); matCache.delete(n);
+    texCache.get(n)?.dispose(); texCache.delete(n);
+  }
 }
 
 // Geometry per shape, centred in the cell like the full cube.
 const geoCache = new Map();
-function geometryOf(shape, facing) {
-  const k = `${shape}/${facing}`;
+function geometryOf(shape, facing, type) {
+  const k = `${shape}/${isFurniture(shape) ? '' : facing}/${type === 'bookshelf' ? 'shelf' : ''}`;
   if (geoCache.has(k)) return geoCache.get(k);
   let g;
-  if (shape === 'slab') {
+  if (isFurniture(shape)) {
+    g = furnitureGeometry(THREE, mergeGeometries, shape);
+  } else if (shape === 'slab') {
     g = new THREE.BoxGeometry(1, 0.5, 1).translate(0, -0.25, 0);
   } else if (shape === 'stair') {
     // bottom half everywhere + top half on the facing side (n = toward smaller z)
     const low = new THREE.BoxGeometry(1, 0.5, 1).translate(0, -0.25, 0);
     const off = { n: [0, -0.25], s: [0, 0.25], e: [0.25, 0], w: [-0.25, 0] }[facing] || [0, -0.25];
     const high = (facing === 'e' || facing === 'w' ? new THREE.BoxGeometry(0.5, 0.5, 1) : new THREE.BoxGeometry(1, 0.5, 0.5)).translate(off[0], 0.25, off[1]);
-    g = mergeGeometries([low, high], true);
+    g = mergeGeometries([low, high], false);
+    low.dispose(); high.dispose();
   } else if (shape === 'door') {
     g = facing === 'z' ? new THREE.BoxGeometry(0.18, 1, 1) : new THREE.BoxGeometry(1, 1, 0.18);
   } else {
-    g = cube;
+    g = type === 'bookshelf' ? cube.clone() : cube;
+  }
+  if (!g.attributes.color) {
+    const colors = new Float32Array(g.attributes.position.count * 3); colors.fill(1);
+    g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  }
+  g.clearGroups();
+  if (type === 'bookshelf') {
+    const uv = g.attributes.uv, normal = g.attributes.normal;
+    // Canvas top half is spines; bottom half is wood. One atlas/material.
+    for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * 0.5 + (Math.abs(normal.getY(i)) < 0.5 ? 0.5 : 0));
   }
   geoCache.set(k, g);
   return g;
@@ -455,6 +557,7 @@ function doorFacing(x, y, z) {
 }
 function renderKey(k, v) {
   const p = parseBlock(v);
+  if (isFurniture(p.shape)) return furnitureBatch(p.type, p.shape);
   if (p.type !== 'door') return v;
   const [x, y, z] = k.split(',').map(Number);
   return `door/${p.facing || doorFacing(x, y, z)}`;
@@ -463,36 +566,63 @@ function renderKey(k, v) {
 // Rebuild the instanced meshes for the stored values that changed (doors always, since
 // they lean on their neighbours).
 function rebuild(values) {
+  livingView.setHome(HOME, blocks);
+  if (HOME?.id === 'mulgyeol-maru') {
+    for (const mesh of meshes.values()) { scene.remove(mesh); mesh.dispose(); }
+    meshes.clear();
+    if (dioramaDirty || !diorama) {
+      if (diorama) { scene.remove(diorama.group); diorama.dispose(); }
+      diorama = createDiorama({ THREE, home: HOME, blocks });
+      scene.add(diorama.group); dioramaDirty = false;
+    }
+    diorama.setCutaway(cutaway);
+    diorama.setNight?.(night);
+    lampCenters = []; lampDirty = true;
+    $('#count').textContent = ({ko:'바닷가 작은 집의 하루',en:'A day at the seaside home',ja:'海辺の小さな家の一日'}[lang] || '');
+    $('#empty').hidden = true;
+    invalidate();
+    return;
+  }
+  if (diorama) { scene.remove(diorama.group); diorama.dispose(); diorama = null; dioramaDirty = true; }
   const want = new Set();
   let lampsChanged = false;
   for (const v of values) {
     const p = parseBlock(v);
     if (isGlow(p.type)) lampsChanged = true;
-    if (p.type === 'door') { want.add('door/x'); want.add('door/z'); } else want.add(v);
+    if (p.type === 'door') { want.add('door/x'); want.add('door/z'); }
+    else want.add(isFurniture(p.shape) ? furnitureBatch(p.type, p.shape) : v);
   }
   const groups = new Map();
   let hasDoor = false;
   for (const [k, v] of blocks) {
-    if (CUT !== Infinity && Number(k.split(',')[1]) > CUT) continue; // screenshot roof cut
+    const [x,y,z] = k.split(',').map(Number);
+    const visible = (px,py,pz) => homeVisible(px,py,pz,HOME,cutaway,CUT);
+    if (!visible(x,y,z) || buriedCube(x,y,z,v,blocks,CUSTOM,visible)) continue;
     const rk = renderKey(k, v);
     if (rk.startsWith('door/')) hasDoor = true;
     if (want.has(rk) || rk.startsWith('door/')) (groups.get(rk) || groups.set(rk, []).get(rk)).push(k);
   }
   if (hasDoor || want.has('door/x')) { want.add('door/x'); want.add('door/z'); }
   const m4 = new THREE.Matrix4();
+  const tint = new THREE.Color();
   for (const rk of want) {
     const old = meshes.get(rk);
     if (old) { scene.remove(old); old.dispose(); }
     const keys = groups.get(rk) || [];
     if (!keys.length) { meshes.delete(rk); continue; }
     const p = parseBlock(rk);
-    const mesh = new THREE.InstancedMesh(geometryOf(p.shape, p.facing), material(p.type), keys.length);
+    const mesh = new THREE.InstancedMesh(geometryOf(p.shape, p.facing, p.type), material(p.type), keys.length);
     keys.forEach((k, i) => {
       const [x, y, z] = k.split(',').map(Number);
-      m4.makeTranslation(x + 0.5, y - 0.5, z + 0.5);
+      m4.makeRotationY(isFurniture(p.shape) ? FACING_TURN[parseBlock(blocks.get(k)).facing] || 0 : 0);
+      m4.setPosition(x + 0.5, y - 0.5, z + 0.5);
       mesh.setMatrixAt(i, m4);
+      const seed = (Math.imul(x + 1, 73856093) ^ Math.imul(y + 1, 19349663) ^ Math.imul(z + 1, 83492791)) >>> 0;
+      const shade = isGlow(p.type) || CUSTOM[p.type] ? 1 : 0.96 + (seed % 1001) / 1000 * 0.08;
+      mesh.setColorAt(i, tint.setRGB(shade, shade, shade));
     });
     mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor.needsUpdate = true;
     scene.add(mesh);
     meshes.set(rk, mesh);
   }
@@ -506,8 +636,48 @@ function rebuild(values) {
     lampDirty = true;
   }
   const lamps = lampCenters.length;
-  $('#count').textContent = t('world.blocks', { n: blocks.size.toLocaleString(locale) }) + (lamps ? ` · ${t('world.lights', { n: lamps })}` : '');
+  $('#count').textContent = HOME?.id === 'mulgyeol-maru'
+    ? ({ko:'함께 쌓아가는 하루',en:'Little moments, shared',ja:'一緒に重ねる日々'}[lang] || '')
+    : t('world.blocks', { n: blocks.size.toLocaleString(locale) }) + (lamps ? ` · ${t('world.lights', { n: lamps })}` : '');
   $('#empty').hidden = blocks.size > 0;
+  invalidate();
+}
+
+// The album reuses saved public images. It never captures a screenshot or asks
+// for a new image. Decode small wall textures lazily when this camera is opened.
+let albumFiles = [], albumVersion = 0, albumKey = '';
+const albumGroup = new THREE.Group(); scene.add(albumGroup);
+async function refreshAlbum() {
+  if (HOME?.id !== 'mulgyeol-maru' || cameraPreset !== 'album') return;
+  const files = albumFiles.filter(f => f.available !== false && /^images\/[^/]+\.png$/i.test(f.path)
+    && !f.path.includes('..') && f.size > 0 && f.size <= 8*1024*1024)
+    .sort((a,b)=>(b.mtime||0)-(a.mtime||0)).slice(0,6);
+  const key = files.map(f=>`${f.path}:${f.mtime}`).join('|');
+  if (key === albumKey) return;
+  albumKey = key; const version = ++albumVersion;
+  for (const m of [...albumGroup.children]) {
+    albumGroup.remove(m); m.geometry.dispose(); m.material.map?.dispose(); m.material.dispose();
+  }
+  for (const [i,f] of files.entries()) {
+    try {
+      const url = appUrl('/ws/'+f.path.split('/').map(encodeURIComponent).join('/')+`?t=${Math.round(f.mtime||0)}`);
+      const response = await fetch(url); if (!response.ok) continue;
+      const blob = await response.blob();
+      const header = new DataView(await blob.slice(0,24).arrayBuffer());
+      if (header.byteLength < 24 || header.getUint32(0) !== 0x89504e47 || header.getUint32(4) !== 0x0d0a1a0a) continue;
+      const width = header.getUint32(16), height = header.getUint32(20);
+      if (!width || !height || width > 16384 || height > 16384) continue;
+      const scale = Math.min(236/width,354/height,1);
+      const bitmap = await createImageBitmap(blob,{resizeWidth:Math.max(1,Math.round(width*scale)),resizeHeight:Math.max(1,Math.round(height*scale)),resizeQuality:'medium'});
+      if (version !== albumVersion) { bitmap.close(); return; }
+      const canvas = document.createElement('canvas'); canvas.width=256; canvas.height=384;
+      const g=canvas.getContext('2d'); g.fillStyle='#fffaf0';g.fillRect(0,0,256,384);g.drawImage(bitmap,(256-bitmap.width)/2,(384-bitmap.height)/2);bitmap.close();
+      const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(0.7,0.92),new THREE.MeshBasicMaterial({map:texture,side:THREE.DoubleSide}));
+      m.position.set(36.995,5.5-Math.floor(i/3),21.5+(i%3));m.rotation.y=-Math.PI/2;
+      albumGroup.add(m);invalidate();
+    } catch { /* A missing public image leaves its physical frame empty. */ }
+  }
 }
 
 // ---------- signs ----------
@@ -536,13 +706,28 @@ function renderSigns() {
   for (const m of [...signGroup.children]) {
     signGroup.remove(m);
     m.geometry.dispose();
-    for (const mat of m.material) { mat.map?.dispose(); mat.dispose(); }
+    for (const mat of Array.isArray(m.material) ? m.material : [m.material]) { mat.map?.dispose(); mat.dispose(); }
   }
+  const homeSigns = HOME?.id === 'mulgyeol-maru';
+  const builtInLabels = new Map([
+    ['12,7,16','아디나'], ['19,7,16','비앙카'], ['26,7,16','일레븐'], ['33,7,16','루치아'],
+    ['23,6,37','물결마루'], ['10,6,16','북쪽 툇마루'], ['14,7,22','욕실·세탁'],
+    ['37,7,24','사진과 추억'], ['36,6,25','나쟈의 작은 콘솔'], ['31,6,37','오늘의 식탁'], ['28,6,20','동백 중정'],
+  ]);
   for (const [k, s] of Object.entries(SIGNS)) {
     const [x, y, z] = k.split(',').map(Number);
-    if (y > CUT) continue;
+    if (homeSigns && builtInLabels.get(k) === s.text) continue;
+    if (!homeVisible(x,y,z,HOME,cutaway,CUT)) continue;
     const tex = signTexture(s);
     tex.minFilter = THREE.LinearFilter; tex.magFilter = THREE.LinearFilter; // text reads better smooth
+    if (homeSigns) {
+      const width = Math.min(s.width, 2.4);
+      const plaque = new THREE.Mesh(new THREE.PlaneGeometry(width, .42), new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));
+      plaque.position.set(x+.5,y-.5,z+.5);
+      plaque.rotation.y = SIGN_TURN[s.facing] ?? 0;
+      signGroup.add(plaque);
+      continue;
+    }
     const front = s.glow
       ? new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(2.4, 2.4, 2.4) })
       : lampLit(new THREE.MeshLambertMaterial({ map: tex }));
@@ -556,13 +741,19 @@ function renderSigns() {
 
 // ---------- avatars, name tags, speech bubbles ----------
 const avatars = {}; // id -> {group, target, bubble, bubbleUntil}
+let avatarPositions = {};
+const portraitGeometry = new THREE.PlaneGeometry(1, 1);
+const contactGeometry = new THREE.CircleGeometry(0.55, 24);
 
-function circleTexture(img, ring) {
+function circleTexture(img, ring, id) {
   const c = document.createElement('canvas');
   c.width = c.height = 128;
   const g = c.getContext('2d');
   g.beginPath(); g.arc(64, 64, 60, 0, Math.PI * 2); g.closePath();
-  g.save(); g.clip(); g.drawImage(img, 0, 0, 128, 128); g.restore();
+  g.save(); g.clip();
+  g.fillStyle = '#e8e6ef'; g.fillRect(0, 0, 128, 128);
+  if (img) drawAvatar(g, img, id, 0, 0, 128, 128);
+  g.restore();
   g.lineWidth = 6; g.strokeStyle = ring; g.stroke();
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
@@ -606,47 +797,95 @@ function textSprite(text, { color = '#1b1f2a', bg = 'rgba(255,255,255,.94)', bor
 }
 
 function ensureAvatar(id) {
-  if (avatars[id] || !MEMBERS[id]) return avatars[id];
+  if (avatars[id]) { refreshAvatar(id); return avatars[id]; }
+  if (!MEMBERS[id] && !['dev', 'former-member'].includes(id)) return;
   const group = new THREE.Group();
-  const face = new THREE.Sprite(new THREE.SpriteMaterial({ color: 0xffffff }));
+  // One shared portrait plane: camera-facing while upright, physically horizontal
+  // on a bed. Reuses the same draw/geometry when posture changes.
+  const face = new THREE.Mesh(portraitGeometry, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false }));
   face.scale.set(1.8, 1.8, 1);
   face.position.y = 1.1;
   group.add(face);
-  const img = new Image();
-  const faceReady = new Promise((done) => {
-    img.onload = () => { face.material.map = circleTexture(img, MEMBERS[id].color); face.material.needsUpdate = true; done(); };
-    img.onerror = done;
-  });
-  img.src = `/avatars/${id}-128.webp`;
-  const tag = textSprite(MEMBERS[id].name, { color: '#fff', bg: MEMBERS[id].color, border: 'rgba(0,0,0,.2)', size: 26 });
-  tag.position.y = 2.35;
-  group.add(tag);
-  const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.55, 24), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 }));
+  const shadow = new THREE.Mesh(contactGeometry, new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.22 }));
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.y = 0.02;
   group.add(shadow);
   scene.add(group);
-  avatars[id] = { group, target: new THREE.Vector3(), bubble: null, bubbleUntil: 0, faceReady };
+  avatars[id] = { group, face, shadow, tag: null, target: new THREE.Vector3(), bubble: null, bubbleUntil: 0, posture: 'stand' };
+  refreshAvatar(id);
   return avatars[id];
 }
 
+function refreshAvatar(id) {
+  const a = avatars[id], color = memberColor(id) || '#555b66';
+  const accent = memberAccentColor(id) || color;
+  const key = JSON.stringify([NAME_OF(id), color, accent, avatarSpec(id)]);
+  if (a.identity === key) return;
+  a.identity = key;
+  if (a.tag) { a.group.remove(a.tag); a.tag.material.map.dispose(); a.tag.material.dispose(); }
+  a.tag = textSprite(NAME_OF(id), { color: '#fff', bg: color, border: accent, size: 26 });
+  a.tag.position.y = a.tagY ?? 2.35; a.group.add(a.tag);
+  a.face.material.map?.dispose();
+  a.face.material.map = circleTexture(null, accent, id);
+  a.face.material.needsUpdate = true;
+  a.faceReady = loadAvatarImage(id).then((img) => {
+    if (!img || a.identity !== key) return;
+    a.face.material.map?.dispose();
+    a.face.material.map = circleTexture(img, accent, id);
+    a.face.material.needsUpdate = true;
+    invalidate();
+  });
+}
+
+function poseAvatar(a, p) {
+  const posture = ['sit', 'lie', 'work'].includes(p.posture) ? p.posture : 'stand';
+  a.posture = posture;
+  const lying = posture === 'lie', sitting = posture === 'sit', working = posture === 'work';
+  a.face.scale.set(lying ? 0.76 : sitting ? 1.05 : working ? 1.55 : 1.8, lying ? 0.9 : sitting ? 1.05 : working ? 1.55 : 1.8, 1);
+  a.face.position.y = lying ? 0.09 : sitting ? 0.58 : working ? 0.96 : 1.1;
+  if (lying) a.face.rotation.set(-Math.PI / 2, 0, Math.PI + (FACING_TURN[p.facing] || 0));
+  a.tagY = lying ? 0.98 : sitting ? 1.35 : working ? 2.05 : 2.35;
+  a.tag.position.y = a.tagY;
+  a.shadow.scale.set(lying ? 0.72 : sitting ? 0.6 : 1, lying ? 0.55 : sitting ? 0.6 : 1, 1);
+  if (a.bubble) a.bubble.position.y = a.tagY + 0.85 + a.bubble.scale.y / 2;
+}
 function setAvatars(map) {
+  avatarPositions = { ...avatarPositions, ...map };
   for (const [id, p] of Object.entries(map || {})) {
     const a = ensureAvatar(id);
     if (!a) continue;
-    a.target.set(p.x + 0.5, p.y - 1, p.z + 0.5); // feet on top of the column
-    if (!a.placed) { a.group.position.copy(a.target); a.placed = true; }
+    a.target.set(p.x + 0.5, (p.y ?? 1) - 1, p.z + 0.5); // server resolves floor or seat/mattress surface
+    a.finalPose = p;
+    if (!a.placed || document.hidden || SHOT) {
+      a.group.position.copy(a.target); a.placed = true; a.route = []; a.moveId = p.moveId;
+    } else if (p.moveId !== undefined && p.moveId !== a.moveId) {
+      const route = safeRoute(p.path).map(v => new THREE.Vector3(v.x + 0.5, v.y - 1, v.z + 0.5));
+      // A new command starts at the server's previous destination. Finish the
+      // existing route before taking it, rather than cutting across a wall.
+      if (route.length) {
+        const old = a.route || [];
+        const end = old.at(-1) || a.group.position;
+        if (end.distanceToSquared(route[0]) < 0.02) a.route = [...old, ...route.slice(1)];
+        else { a.group.position.copy(route[0]); a.route = route.slice(1); }
+      } else { a.group.position.copy(a.target); a.route = []; }
+      a.moveId = p.moveId;
+    } else if (p.moveId === undefined) { a.route = []; a.group.position.copy(a.target); }
+    poseAvatar(a, a.route?.length ? { posture:'stand' } : p);
   }
+  invalidate();
 }
 
 function say(id, text) {
   const a = avatars[id];
   if (!a || !text) return;
-  if (a.bubble) { a.group.remove(a.bubble); a.bubble.material.map.dispose(); }
+  if (a.bubble) { a.group.remove(a.bubble); a.bubble.material.map.dispose(); a.bubble.material.dispose(); }
   a.bubble = textSprite(text, { tail: true });
-  a.bubble.position.y = 3.2 + a.bubble.scale.y / 2;
+  a.bubble.position.y = a.tagY + 0.85 + a.bubble.scale.y / 2;
   a.group.add(a.bubble);
   a.bubbleUntil = performance.now() + Math.min(14000, 5000 + text.length * 120);
+  clearTimeout(a.bubbleTimer);
+  a.bubbleTimer = setTimeout(invalidate, a.bubbleUntil - performance.now() + 1);
+  invalidate();
 }
 
 // ---------- HUD ----------
@@ -657,11 +896,17 @@ function renderWho() {
   for (const [id, m] of Object.entries(MEMBERS)) {
     const b = document.createElement('button');
     b.type = 'button';
-    b.innerHTML = `<img src="/avatars/${id}-128.webp" alt=""><span style="color:${m.color};font-weight:650">${m.name}</span>`;
-    b.onclick = () => { follow = follow === id ? null : id; b.classList.toggle('on', follow === id); renderWhoState(); };
+    const name = document.createElement('span');
+    name.style.color = memberColor(id); name.style.fontWeight = '650'; name.textContent = m.name;
+    const avatar = createAvatar(id);
+    avatar.style.outline = `2px solid ${memberAccentColor(id) || memberColor(id) || '#555b66'}`;
+    avatar.style.outlineOffset = '-1px';
+    b.append(avatar, name);
+    b.onclick = () => { follow = follow === id ? null : id; b.classList.toggle('on', follow === id); renderWhoState(); invalidate(); };
     b.dataset.id = id;
     box.append(b);
   }
+  renderWhoState();
 }
 function renderWhoState() { for (const b of $('#who').children) b.classList.toggle('on', b.dataset.id === follow); }
 
@@ -673,8 +918,11 @@ function addChat(m) {
   if (!text) return;
   chatLines.push({ from: m.from, text, sys: m.from === 'system' });
   while (chatLines.length > 7) chatLines.shift();
+  renderChat();
+}
+function renderChat() {
   const box = $('#chat');
-  box.hidden = false;
+  box.hidden = !chatLines.length;
   box.innerHTML = '';
   for (const l of chatLines) {
     const d = document.createElement('div');
@@ -682,7 +930,7 @@ function addChat(m) {
     if (!l.sys) {
       const n = document.createElement('span');
       n.className = 'n';
-      n.style.color = MEMBERS[l.from]?.color || 'var(--accent)';
+      n.style.color = memberColor(l.from) || 'var(--accent)';
       n.textContent = NAME_OF(l.from);
       d.append(n);
     }
@@ -691,7 +939,15 @@ function addChat(m) {
   }
 }
 
-$('#rotate').onclick = (e) => { controls.autoRotate = !controls.autoRotate; e.currentTarget.classList.toggle('on', controls.autoRotate); };
+function stopCameraInertia() {
+  const damping = controls.enableDamping;
+  controls.enableDamping = false; controls.update(); controls.enableDamping = damping;
+}
+$('#rotate').onclick = (e) => {
+  controls.autoRotate = !controls.autoRotate;
+  if (!controls.autoRotate) stopCameraInertia();
+  e.currentTarget.classList.toggle('on', controls.autoRotate); invalidate();
+};
 $('#night').onclick = () => {
   night = !night;
   try { localStorage.setItem('world-night', night ? '1' : '0'); } catch { /* no storage */ }
@@ -716,10 +972,32 @@ async function markShotReady() {
 $('#home').onclick = () => { homeView(); renderWhoState(); };
 
 // ---------- data ----------
+function setMembers(list = []) {
+  const changed = setPersonaMembers(list);
+  MEMBERS = Object.fromEntries(list.map((m) => [m.id, m]));
+  livingView.setMembers(list);
+  if (!changed) return;
+  renderWho();
+  setAvatars(avatarPositions);
+  for (const id of Object.keys(avatars)) refreshAvatar(id);
+  renderChat();
+}
 async function load() {
-  const w = await fetch('/api/world').then((r) => r.json());
+  const [w, st] = await Promise.all([
+    fetch(appUrl('/api/world'), { cache: 'no-store' }).then((r) => r.json()),
+    fetch(appUrl('/api/state'), { cache: 'no-store' }).then((r) => r.json()),
+    livingView.reload(),
+  ]);
+  USER_NAME = st.room?.userName || USER_NAME;
+  setMembers(st.members);
   SIZE = w.size; PALETTE = w.palette; CUSTOM = w.custom || {};
-  texCache.clear();
+  const previousHomeId = HOME?.id;
+  HOME = w.home || null;
+  dioramaDirty = true;
+  applyNight();
+  albumFiles = st.files || [];
+  renderHomeControls();
+  invalidateMaterials(new Set([...texCache.keys(), ...matCache.keys()]));
   blocks.clear();
   for (const [x, y, z, type] of w.blocks) blocks.set(`${x},${y},${z}`, type);
   buildGround();
@@ -727,13 +1005,21 @@ async function load() {
   SIGNS = w.signs || {};
   renderSigns();
   setAvatars(w.avatars);
-  const st = await fetch('/api/state').then((r) => r.json()).catch(() => null);
-  USER_NAME = st?.room?.userName || USER_NAME;
+  chatLines.length = 0;
   for (const m of (st?.messages || []).slice(-6)) addChat(m);
+  if (!SHOT && (!loadedOnce || previousHomeId !== HOME?.id)) homeView();
+  loadedOnce = true;
+  refreshAlbum();
 }
 
 function connect() {
-  const es = new EventSource('/events');
+  const es = new EventSource(appUrl('/events'));
+  es.addEventListener('living', (e) => {
+    try { livingView.setState(JSON.parse(e.data)); } catch { /* wait for the next public snapshot */ }
+  });
+  es.addEventListener('members', (e) => setMembers(JSON.parse(e.data)));
+  es.addEventListener('room', (e) => { USER_NAME = JSON.parse(e.data).userName || USER_NAME; renderChat(); });
+  es.addEventListener('ws', (e) => { albumFiles = JSON.parse(e.data) || []; refreshAlbum(); });
   es.addEventListener('world', (e) => {
     const { changes } = JSON.parse(e.data);
     const types = new Set();
@@ -742,15 +1028,21 @@ function connect() {
       const old = blocks.get(k);
       if (old) types.add(old);
       if (type) { blocks.set(k, type); types.add(type); } else blocks.delete(k);
+      for (const [dx,dy,dz] of NEIGHBORS) {
+        const neighbor = blocks.get(`${x+dx},${y+dy},${z+dz}`); if (neighbor) types.add(neighbor);
+      }
     }
+    if (changes.length) dioramaDirty = true;
     rebuild(types);
   });
   es.addEventListener('avatars', (e) => setAvatars(JSON.parse(e.data)));
-  es.addEventListener('signs', (e) => { SIGNS = JSON.parse(e.data) || {}; renderSigns(); });
+  es.addEventListener('signs', (e) => { SIGNS = JSON.parse(e.data) || {}; renderSigns(); invalidate(); });
   es.addEventListener('worldblocks', (e) => {
+    const previous = Object.keys(CUSTOM);
     CUSTOM = JSON.parse(e.data) || {};
-    for (const n of Object.keys(CUSTOM)) texCache.delete(n); // a redefined block gets its new picture
-    rebuild(new Set([...blocks.values()].filter((v) => CUSTOM[parseBlock(v).type])));
+    const changed = new Set([...previous, ...Object.keys(CUSTOM)]);
+    invalidateMaterials(changed);
+    rebuild(new Set([...blocks.values()].filter((v) => changed.has(parseBlock(v).type))));
   });
   es.addEventListener('msg', (e) => {
     const m = JSON.parse(e.data);
@@ -758,7 +1050,7 @@ function connect() {
     if (MEMBERS[m.from] && m.text) say(m.from, m.text);
   });
   let hadError = false;
-  es.onerror = () => { hadError = true; };
+  es.onerror = () => { hadError = true; livingView.setDisconnected(); };
   es.onopen = () => { if (hadError) { hadError = false; load().catch(() => {}); } };
 }
 
@@ -766,44 +1058,97 @@ function connect() {
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h);
-  composer.setSize(w, h);
-  bloom.resolution.set(w, h);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
+  if (HOME?.id === 'mulgyeol-maru' && !SHOT && !follow && !freeCam) selectCamera(cameraPreset);
+  invalidate();
 }
 addEventListener('resize', resize);
 resize();
 
-function tick() {
-  const now = performance.now();
-  for (const a of Object.values(avatars)) {
-    a.group.position.lerp(a.target, 0.08);
-    if (a.bubble && now > a.bubbleUntil) {
-      const left = 1 - (now - a.bubbleUntil) / 800;
-      if (left <= 0) { a.group.remove(a.bubble); a.bubble.material.map.dispose(); a.bubble = null; }
-      else a.bubble.material.opacity = left;
+// Read-only diagnostics; dormant views render no frames at all.
+renderer.info.autoReset = false;
+window.__worldRenderStats = () => ({
+  blocks: blocks.size, batches: meshes.size,
+  blockDrawCalls: [...meshes.values()].reduce((n, m) => n + (Array.isArray(m.material) ? m.geometry.groups.length : 1), 0),
+  blockTriangles: [...meshes.values()].reduce((n, m) => n + (m.geometry.index?.count ?? m.geometry.attributes.position.count) / 3 * m.count, 0),
+  geometries: renderer.info.memory.geometries, textures: renderer.info.memory.textures,
+  cachedGeometries: new Set(geoCache.values()).size, cachedMaterials: matCache.size, cachedTextures: texCache.size,
+  calls: renderer.info.render.calls, triangles: renderer.info.render.triangles,
+  lights: scene.children.filter((o) => o.isLight).length, passes: 1,
+  renderedFrames, visible: !document.hidden, maxFps: 30, pixelRatio: renderer.getPixelRatio(),
+  visibleInstances: diorama ? diorama.stats().visibleInstances : [...meshes.values()].reduce((n,m)=>n+m.count,0),
+  renderCpuMs: frameTimes.length ? frameTimes.reduce((a,b)=>a+b,0)/frameTimes.length : null,
+  camera: cameraPreset, cutaway,
+  style: diorama ? 'diorama' : 'blocks', diorama: diorama?.stats() || null,
+  living: livingView.stats(),
+  visibleSigns: signGroup.children.length,
+  actors: Object.fromEntries(Object.entries(avatars).map(([id,a])=>[id,{position:a.group.position.toArray(),remaining:a.route?.length||0,posture:a.posture}])),
+});
+const followPoint = new THREE.Vector3();
+function invalidate() {
+  needsRender = true;
+  if (!document.hidden && pendingFrame === null) pendingFrame = requestAnimationFrame(tick);
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    if (pendingFrame !== null) cancelAnimationFrame(pendingFrame);
+    pendingFrame = null;
+  } else {
+    for (const a of Object.values(avatars)) {
+      a.route = []; a.group.position.copy(a.target); poseAvatar(a,a.finalPose || {});
     }
+    lastTickAt = 0; invalidate();
   }
+});
+function tick(now) {
+  pendingFrame = null;
+  if (document.hidden) return;
+  if (now - lastFrameAt < 1000/30 - 1) { invalidate(); return; }
+  lastFrameAt = now;
+  const dt = Math.min(0.1, lastTickAt ? (now-lastTickAt)/1000 : 1/30); lastTickAt = now;
+  let active = controls.autoRotate;
   if (follow && avatars[follow]) {
     const p = avatars[follow].group.position;
-    controls.target.lerp(new THREE.Vector3(p.x, p.y + 1, p.z), 0.08);
+    followPoint.set(p.x,p.y+1,p.z);
+    if (controls.target.distanceToSquared(followPoint) > 0.0001) {
+      controls.target.lerp(followPoint,0.2); active = true;
+    }
   }
-  if (!freeCam) controls.update(); // orbit controls would turn a free camera back to its target
+  if (!freeCam && controls.update()) active = true;
+  for (const a of Object.values(avatars)) {
+    if (a.route?.length) {
+      const next = a.route[0], distance = a.group.position.distanceTo(next), step = dt*4;
+      if (distance <= step) { a.group.position.copy(next); a.route.shift(); }
+      else a.group.position.lerp(next,step/distance);
+      active = true;
+      if (!a.route.length) { a.group.position.copy(a.target); poseAvatar(a,a.finalPose); }
+    }
+    if (a.posture !== 'lie') { a.face.quaternion.copy(camera.quaternion); if (a.posture === 'work') a.face.rotateZ(-0.1); }
+    if (a.bubble && now > a.bubbleUntil) {
+      const left = 1 - (now - a.bubbleUntil) / 800;
+      if (left <= 0) { a.group.remove(a.bubble); a.bubble.material.map.dispose(); a.bubble.material.dispose(); a.bubble = null; }
+      else { a.bubble.material.opacity = left; active = true; }
+    }
+  }
   LAMP.uTime.value = now / 1000;
   updateLamps();
-  composer.render();
-  requestAnimationFrame(tick);
+  renderer.info.reset();
+  const start = performance.now();
+  renderer.render(scene,camera); renderedFrames++;
+  frameTimes.push(performance.now()-start); if (frameTimes.length>180) frameTimes.shift();
+  needsRender = false;
+  if (active) invalidate();
 }
 
 renderWho();
 applyNight();
 homeView();
-buildGround();
 load()
   .then(() => { if (SHOT) { shotView(); markShotReady(); } })
   .catch(() => { $('#empty').hidden = false; $('#empty').textContent = t('world.loadFailed'); });
 if (!SHOT) connect();
-tick();
+invalidate();
 </script>
 </body>
 </html>

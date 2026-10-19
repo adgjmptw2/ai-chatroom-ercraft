@@ -3,6 +3,16 @@ data/
 workspace/
 .env
 config.json
+.env.*
+
+# Character artwork stays local; the public UI also works with initials.
+public/assets/characters/
+public/previews/assets/characters/
+
+# Isolated tests own these temporary source copies and synthetic credentials.
+tests/.service-integration-*/
+tests/.liar-fixture-*/
+tests/.planner-fixture-*/
 
 # your own character sheets (optional looks references)
 assets/sheets/
